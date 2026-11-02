@@ -7,6 +7,17 @@ function Release($obj) {
   if ($obj) { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($obj) }
 }
 
+# Saves the first sheet of a workbook as CSV (Shift_JIS on Japanese Windows), CSV UTF-8 and
+# Unicode text (UTF-16 LE, tab separated).
+function Export-Delimited($excel, [string]$Source, [string]$Dir) {
+  foreach ($format in @(@('sample.csv', 6), @('sample-utf8.csv', 62), @('sample-utf16.tsv', 42))) {
+    $book = $excel.Workbooks.Open($Source)
+    $book.Worksheets.Item(1).Activate()
+    $book.SaveAs([string](Join-Path $Dir $format[0]), $format[1])
+    $book.Close($false)
+  }
+}
+
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
@@ -90,6 +101,9 @@ try {
 
   $wb.SaveAs([string](Join-Path $Out 'sample.xlsx'), 51) # xlOpenXMLWorkbook
   $wb.Close($false)
+
+  # The first sheet as delimited text in the encodings Excel writes.
+  Export-Delimited $excel (Join-Path $Out 'sample.xlsx') $Out
 } finally {
   $excel.Quit()
   Release $excel

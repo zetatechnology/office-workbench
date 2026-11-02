@@ -4,7 +4,7 @@ VS Code 上で Word / Excel / PowerPoint（と PDF）ファイルを閲覧・操
 
 - 実装方針: [docs/implementation-plan.md](docs/implementation-plan.md)
 
-## 現在の状態（Phase 1 / 1.5: 閲覧、Phase 2: Excel 編集）
+## 現在の状態（Phase 1 / 1.5: 閲覧、Phase 2: Excel・CSV 編集）
 
 `.docx` / `.xlsx` / `.pptx`（およびマクロ付きの `.docm` / `.xlsm` / `.pptm`）と `.pdf` をエディタで開いて表示します。Excel は編集・保存もできます（それ以外は読み取り専用）。
 
@@ -29,6 +29,14 @@ VS Code 上で Word / Excel / PowerPoint（と PDF）ファイルを閲覧・操
 | シート | タブの「+」で追加、ダブルクリックで名前変更、右クリックで削除（他シート・名前定義・グラフの参照も更新） |
 | 元に戻す・保存 | VS Code の Ctrl+Z / Ctrl+Y / Ctrl+S。未保存の変更は VS Code のバックアップ（Hot Exit）で保持 |
 
+### CSV / TSV
+
+`.csv` / `.tsv` / `.tab` は Excel と同じ表の画面で表示・編集できます。CSV はテキストとして編集することも多いため、通常どおりテキストエディタで開き、エディタ右上の「Open as Table」（表アイコン）またはエクスプローラーの右クリックで表に切り替えます（表からは「Open as Text」で戻ります）。常に表で開きたい場合は設定 `workbench.editorAssociations` に `"*.csv": "officeWorkbench.csv"` を追加します。
+
+- 文字コードは UTF-8（BOM あり / なし）、Shift_JIS（Windows-31J）、UTF-16 を自動判別し、保存時も同じ文字コード・区切り文字・改行コードで書き戻します。Shift_JIS で表せない文字（絵文字など）を含むと保存できません
+- 編集した行だけを書き直し、それ以外の行は元のテキスト（引用符の付け方も含む）のまま残します
+- 値は文字列としてそのまま保存します（`=1+2` も数式ではなく文字列）。数値に見える値は右寄せで表示します
+
 保存は「変更したパートだけを書き換える」方式で、それ以外の ZIP エントリ（グラフ・画像・マクロ等）は元のバイト列のまま残します。数式は再計算しないため、入力した数式の結果は Excel で開いたときに計算されます（保存時に `fullCalcOnLoad` を設定し、`calcChain.xml` を削除）。
 
 ## 開発
@@ -52,9 +60,9 @@ npm run typecheck
 
 ```
 packages/
-  core/       OOXML 読み書き（xlsx の編集・保存、pptx の読み取り）、数値書式、Webview とのメッセージ定義。VS Code 非依存
-  extension/  VS Code 拡張本体（Excel は CustomEditorProvider、他は CustomReadonlyEditorProvider）
+  core/       OOXML 読み書き（xlsx の編集・保存、pptx の読み取り）、CSV / TSV の読み書きと文字コード、数値書式、Webview とのメッセージ定義。VS Code 非依存
+  extension/  VS Code 拡張本体（Excel・CSV は CustomEditorProvider、他は CustomReadonlyEditorProvider）
   webview/    Webview UI（Word / Excel / PowerPoint / PDF ビューア）
 scripts/      ビルド、プレビュー用サーバー、フィクスチャ生成
-test-fixtures/ Office で作成したサンプルファイル
+test-fixtures/ Office で作成したサンプルファイル（CSV は Excel から Shift_JIS / UTF-8 / UTF-16 で書き出したもの）
 ```

@@ -14,6 +14,9 @@ interface State {
 const app = document.getElementById('app')!;
 let info: WorkbookInfo | undefined;
 let editable = false;
+/** CSV files are a single sheet: no sheet operations. */
+let sheetsEditable = false;
+let details = '';
 let activeSheet = getState<State>().sheet ?? -1;
 let grid: SheetGrid | undefined;
 let selection: Selection | undefined;
@@ -46,6 +49,8 @@ onHostMessage((message) => {
     case 'workbook': {
       info = message.info;
       editable = message.editable;
+      sheetsEditable = editable && message.format === 'xlsx';
+      details = message.details ?? '';
       sheetCache.clear();
       const visible = info.sheets.filter((s) => s.state === 'visible');
       if (!visible.length) return showMessage(app, 'This workbook has no visible worksheets.', 'error');
@@ -53,7 +58,7 @@ onHostMessage((message) => {
       if (!visible.some((s) => s.index === activeSheet)) {
         activeSheet = (visible.find((s) => s.index > activeSheet) ?? visible[visible.length - 1]).index;
       }
-      addTab.hidden = !editable;
+      addTab.hidden = !sheetsEditable;
       valueBox.readOnly = !editable;
       if (!app.contains(gridHost)) app.replaceChildren(formulaBar, gridHost, footer, toast);
       renderTabs();
@@ -89,7 +94,7 @@ function renderTabs(): void {
         const tab = el('button', 'sheet-tab', s.name);
         tab.classList.toggle('active', s.index === activeSheet);
         tab.onclick = () => openSheet(s.index);
-        if (editable) {
+        if (sheetsEditable) {
           tab.ondblclick = () => renameTab(tab, s.index, s.name);
           tab.oncontextmenu = (e) => {
             e.preventDefault();
@@ -176,7 +181,7 @@ function showSheet(sheet: SheetData): void {
   const view = getState<State>().views?.[sheet.index];
   grid.restore(view, view?.selection);
   grid.element.addEventListener('scroll', saveView, true);
-  notice.textContent = sheet.unsupported.length ? `Not shown: ${sheet.unsupported.join(', ')}` : '';
+  notice.textContent = sheet.unsupported.length ? `Not shown: ${sheet.unsupported.join(', ')}` : details;
   notice.title = notice.textContent;
   if (hadFocus || document.activeElement === document.body) grid.focus();
 }

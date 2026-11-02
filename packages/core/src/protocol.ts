@@ -19,7 +19,17 @@ export type HostMessage =
   | { type: 'docx'; fileName: string; data: Uint8Array }
   | { type: 'pdf'; fileName: string; data: Uint8Array }
   /** Workbook structure; sent on load and after structural edits. Views reload their sheets. */
-  | { type: 'workbook'; fileName: string; info: WorkbookInfo; editable: boolean; activate?: number }
+  | {
+      type: 'workbook';
+      fileName: string;
+      info: WorkbookInfo;
+      editable: boolean;
+      /** csv: a single sheet of plain text values (no formulas, formats or sheet operations). */
+      format: 'xlsx' | 'csv';
+      /** Short description of the file shown in the footer (e.g. delimiter and encoding). */
+      details?: string;
+      activate?: number;
+    }
   | { type: 'sheet'; sheet: SheetData }
   /** Updated cells of one sheet after an edit, undo or redo. */
   | { type: 'cells'; sheet: number; cells: CellData[]; removed: CellAddress[]; styles: Record<number, CellStyle> }

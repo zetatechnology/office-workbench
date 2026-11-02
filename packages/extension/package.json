@@ -1,7 +1,7 @@
 {
   "name": "office-workbench",
   "displayName": "Office Workbench",
-  "description": "View Word, Excel, PowerPoint and PDF files inside VS Code.",
+  "description": "View Word, Excel, PowerPoint and PDF files inside VS Code, and edit Excel and CSV files.",
   "version": "0.0.1",
   "publisher": "office-workbench",
   "private": true,
@@ -20,8 +20,12 @@
         "viewType": "officeWorkbench.docx",
         "displayName": "Office Workbench: Word",
         "selector": [
-          { "filenamePattern": "*.docx" },
-          { "filenamePattern": "*.docm" }
+          {
+            "filenamePattern": "*.docx"
+          },
+          {
+            "filenamePattern": "*.docm"
+          }
         ],
         "priority": "default"
       },
@@ -29,16 +33,38 @@
         "viewType": "officeWorkbench.xlsx",
         "displayName": "Office Workbench: Excel",
         "selector": [
-          { "filenamePattern": "*.xlsx" },
-          { "filenamePattern": "*.xlsm" }
+          {
+            "filenamePattern": "*.xlsx"
+          },
+          {
+            "filenamePattern": "*.xlsm"
+          }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "officeWorkbench.csv",
+        "displayName": "Office Workbench: Table (CSV / TSV)",
+        "selector": [
+          {
+            "filenamePattern": "*.csv"
+          },
+          {
+            "filenamePattern": "*.tsv"
+          },
+          {
+            "filenamePattern": "*.tab"
+          }
+        ],
+        "priority": "option"
       },
       {
         "viewType": "officeWorkbench.pdf",
         "displayName": "Office Workbench: PDF",
         "selector": [
-          { "filenamePattern": "*.pdf" }
+          {
+            "filenamePattern": "*.pdf"
+          }
         ],
         "priority": "default"
       },
@@ -46,12 +72,61 @@
         "viewType": "officeWorkbench.pptx",
         "displayName": "Office Workbench: PowerPoint",
         "selector": [
-          { "filenamePattern": "*.pptx" },
-          { "filenamePattern": "*.pptm" }
+          {
+            "filenamePattern": "*.pptx"
+          },
+          {
+            "filenamePattern": "*.pptm"
+          }
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "officeWorkbench.openAsTable",
+        "title": "Open as Table",
+        "category": "Office Workbench",
+        "icon": "$(table)"
+      },
+      {
+        "command": "officeWorkbench.openAsText",
+        "title": "Open as Text",
+        "category": "Office Workbench",
+        "icon": "$(go-to-file)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "officeWorkbench.openAsTable",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|tab)$/i && !activeCustomEditorId",
+          "group": "navigation"
+        },
+        {
+          "command": "officeWorkbench.openAsText",
+          "when": "activeCustomEditorId == officeWorkbench.csv",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "officeWorkbench.openAsTable",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|tab)$/i",
+          "group": "navigation@20"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "officeWorkbench.openAsTable",
+          "when": "resourceExtname =~ /^\\.(csv|tsv|tab)$/i && !activeCustomEditorId"
+        },
+        {
+          "command": "officeWorkbench.openAsText",
+          "when": "activeCustomEditorId == officeWorkbench.csv"
+        }
+      ]
+    }
   },
   "dependencies": {
     "@office-workbench/core": "*"

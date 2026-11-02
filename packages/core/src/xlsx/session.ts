@@ -12,7 +12,18 @@ export interface SessionEdit {
   redo(): Promise<HostMessage[]>;
 }
 
-export class WorkbookSession {
+/** One open spreadsheet-like file (workbook or CSV) behind the grid views. */
+export interface SheetSession {
+  /** Requests from a view; edits go through `edit` instead. */
+  handle(message: WebviewMessage): Promise<HostMessage[]>;
+  /** Applies an edit. Throws EditError (with a message for the user) when it is refused. */
+  edit(op: EditOp): Promise<SessionEdit>;
+  save(): Promise<Uint8Array>;
+  /** Replaces the contents, e.g. after revert or a change on disk. */
+  reset(data: Uint8Array): void;
+}
+
+export class WorkbookSession implements SheetSession {
   private workbook: Promise<Workbook>;
   /** Bumped by reset(); undo/redo of edits made before then do nothing. */
   private generation = 0;
@@ -93,6 +104,6 @@ export class WorkbookSession {
   }
 
   private workbookMessage(workbook: Workbook, activate?: number): HostMessage {
-    return { type: 'workbook', fileName: this.fileName, info: workbook.info(), editable: this.editable, activate };
+    return { type: 'workbook', fileName: this.fileName, info: workbook.info(), editable: this.editable, format: 'xlsx', activate };
   }
 }

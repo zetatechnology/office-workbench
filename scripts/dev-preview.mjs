@@ -32,10 +32,11 @@ await esbuild.build({
   format: 'esm',
   logLevel: 'warning',
 });
-const { ViewerBackend, WorkbookSession } = await import(pathToFileURL(coreBundle).href);
+const { ViewerBackend, WorkbookSession, CsvSession } = await import(pathToFileURL(coreBundle).href);
 const saveDir = path.join(os.tmpdir(), 'office-workbench-preview');
 
-const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', pptx: 'pptx', pptm: 'pptx', pdf: 'pdf' };
+const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', csv: 'xlsx', tsv: 'xlsx', tab: 'xlsx', pptx: 'pptx', pptm: 'pptx', pdf: 'pdf' };
+const isDelimited = (name) => /\.(csv|tsv|tab)$/i.test(name);
 const kindOf = (name) => KINDS[path.extname(name).slice(1).toLowerCase()];
 const backends = new Map();
 /** Editable workbooks: file → { session, undo: [], redo: [] }. */
@@ -43,7 +44,9 @@ const workbooks = new Map();
 
 async function handleWorkbook(file, message) {
   if (message.type === 'ready') {
-    workbooks.set(file, { session: new WorkbookSession(file, new Uint8Array(await readFile(path.join(fileDir, file)))), undo: [], redo: [] });
+    const data = new Uint8Array(await readFile(path.join(fileDir, file)));
+    const session = isDelimited(file) ? new CsvSession(file, data) : new WorkbookSession(file, data);
+    workbooks.set(file, { session, undo: [], redo: [] });
   }
   const state = workbooks.get(file);
   switch (message.type) {
