@@ -1,5 +1,6 @@
 // SpreadsheetML reader and editor: workbook structure, shared strings, styles, lazily parsed
 // sheets, and edits applied as minimal changes to the parts they touch.
+import { EditError } from '../errors';
 import { applyTint, hexToRgb, INDEXED_COLORS, parseTheme, rgbToCss, type Theme } from '../color';
 import { dirname, OoxmlPackage, relsPathOf } from '../package';
 import { attr, boolAttr, child, children, descendants, numAttr, path, relAttr, text, toggle, type Element } from '../xml';
@@ -15,8 +16,7 @@ import type {
   CellAddress, CellData, CellKind, CellStyle, EditOp, MergeRange, SheetData, SheetInfo, WorkbookInfo,
 } from './types';
 
-/** An edit the user should be told about (invalid input, unsupported operation), not a bug. */
-export class EditError extends Error {}
+export { EditError };
 
 /** What changed, so views can refresh: individual cells, or the workbook structure. */
 export type EditChange = { kind: 'cells'; sheet: number; cells: CellAddress[] } | { kind: 'structure'; activate?: number };

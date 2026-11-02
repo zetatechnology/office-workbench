@@ -1,0 +1,56 @@
+/* Context menus and toasts shared by the editors. */
+
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 20;
+  max-width: 420px;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-notifications-border, var(--ow-border));
+  border-left: 3px solid var(--vscode-notificationsWarningIcon-foreground, #cca700);
+  border-radius: 3px;
+  background: var(--vscode-notifications-background, var(--ow-toolbar-bg));
+  color: var(--vscode-notifications-foreground, var(--ow-fg));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 200px;
+  padding: 4px 0;
+  border: 1px solid var(--vscode-menu-border, var(--ow-border));
+  border-radius: 5px;
+  background: var(--vscode-menu-background, var(--ow-toolbar-bg));
+  color: var(--vscode-menu-foreground, var(--ow-fg));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 4px 20px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--vscode-menu-selectionBackground, var(--ow-accent));
+  color: var(--vscode-menu-selectionForeground, #fff);
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--vscode-menu-separatorBackground, var(--ow-border));
+}

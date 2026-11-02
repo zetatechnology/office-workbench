@@ -41,7 +41,7 @@ export class CsvSession implements SheetSession {
           return [this.workbookMessage()];
         case 'loadSheet':
           return message.index === 0 ? [{ type: 'sheet', sheet: this.sheet() }] : [{ type: 'error', message: `Sheet ${message.index} does not exist.` }];
-        case 'edit':
+        default:
           return [];
       }
     });

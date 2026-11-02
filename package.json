@@ -14,6 +14,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "fixtures": "powershell -ExecutionPolicy Bypass -File scripts/make-fixtures.ps1",
+    "edited-samples": "node scripts/make-edited-samples.mjs",
+    "check-office": "powershell -ExecutionPolicy Bypass -File scripts/check-office.ps1",
     "preview": "node scripts/dev-preview.mjs",
     "package": "node scripts/build.mjs --production && cd packages/extension && vsce package --no-dependencies --allow-missing-repository --skip-license"
   },

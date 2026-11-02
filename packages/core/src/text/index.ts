@@ -1,4 +1,8 @@
 // Office documents as Markdown text, for reading in a text editor and for line-based diffs.
+import { WordDocument } from '../docx/document';
+import { documentOutline } from '../docx/tool-ops';
+import { parsePresentation } from '../pptx/presentation';
+import { presentationOutline } from '../pptx/tool-ops';
 import { docxToMarkdown } from './docx';
 import { pptxToMarkdown } from './pptx';
 import { xlsxToMarkdown, type SheetSelection } from './xlsx';
@@ -26,4 +30,10 @@ export function toMarkdown(kind: TextKind, data: Uint8Array, selection?: SheetSe
     case 'pptx':
       return pptxToMarkdown(data);
   }
+}
+
+/** Numbered paragraphs (Word) or slides with shape ids (PowerPoint), for the editing tools. */
+export async function toOutline(kind: 'docx' | 'pptx', data: Uint8Array): Promise<string> {
+  if (kind === 'docx') return documentOutline(await (await WordDocument.open(data)).blocks());
+  return presentationOutline((await parsePresentation(data)).presentation);
 }

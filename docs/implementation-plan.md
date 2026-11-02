@@ -164,6 +164,32 @@ test-fixtures/ # 各形式のサンプルファイル（ラウンドトリップ
 
 **Phase 2 で割り切ったこと**: 数式の再計算はしない（入力した数式は Excel で開くまで値が空で、グリッドには数式を斜体で表示）。図形・画像のアンカーは行列操作で移動しない。セル書式（太字・色など）の変更、行高・列幅の変更、シートの並べ替え・非表示化、xls は未対応。
 
+### Phase 3 の詳細（Word / PowerPoint のテキスト編集）
+
+Phase 2 と同じ方針（最小差分保存、正の状態は Extension Host、未対応の要素は壊さず拒否）で、Excel の仕組みを共通化して使う。
+
+| 項目 | 内容 |
+|---|---|
+| 共通化 | `EditSession<Op>`（`handle` / `edit` / `save` / `reset`）を全形式の共通インターフェースにし、拡張側は `OfficeEditorProvider`（旧 `SheetEditorProvider`）1 つで xlsx / csv / docx / pptx を扱う。Word / PowerPoint は `DocumentSession`（操作キューで直列化、`generation` で reset 前の Undo を無効化、編集のたびにビュー全体を再送）を継承。PDF のみ読み取り専用 |
+| Word の操作（`DocxEditOp`） | `setParagraphText(id, text)`、`insertParagraph(after, text, update?)`（`update` 付きで段落の分割）、`deleteParagraph(id)`。id は本文（または表セル）内の要素の位置を `/` でつないだもの（表は `表/行/列/セル内の位置`） |
+| Word の書き換え | 段落の `w:pPr` は残し、run を 1 つにまとめる（最初のテキスト run の `w:rPr`、run がなければ段落記号の `w:rPr`）。タブは `w:tab`、改行は `w:br`。段落の両端にあるブックマークは残し、`proofErr` は捨てる。挿入する段落は `w:pPr` をコピー（`sectPr`・`pPrChange` は除く）し、`w14:paraId` は付けない。分割した段落がセクション末尾なら `sectPr` は後ろの段落へ移す |
+| Word で拒否するもの | フィールド（`fldChar` / `fldSimple` / `instrText`）、ハイパーリンク、画像・図形・OLE、変更履歴（`ins` / `del` / `move*` / `*PrChange`）、コメント範囲・参照、コンテンツコントロール、段落途中のブックマーク、改ページ・段区切り、脚注参照、ルビ、数式、カスタム XML・スマートタグ、編集権限範囲。削除は加えて、ブックマークを含む段落、セクション区切りの段落、文書・表セルの最後の段落、表と表の間の唯一の段落（Word で表が結合されるため） |
+| Word の UI | docx-preview の DOM と XML の段落の対応付けは不確実なため、ページ表示の横に「編集パネル」（段落と表セルの一覧、各段落が textarea）を置く。フォーカスが外れたら確定、Enter で分割、空段落の Backspace で削除。編集後はホストが段落一覧（`docxOutline`）だけを返し、ページ表示は編集が 0.6 秒途切れてから Webview が要求（`preview`）して描き直す（裏で描画してから差し替え、スクロール位置は維持） |
+| Word の段落 id のずれ | id は位置なので、パネルは自分の編集をすぐ画面に反映する（Enter で新しい段落を表示してフォーカスを移し、Backspace で段落を消し、後ろの段落の id を振り直す）。画面の id は常に「送信済みの編集を順に適用した後の id」になる。ホストの段落一覧は、このパネルの編集がすべて応答済み（ホストが送り元だけに返す `edited`）のときだけ画面に反映する。挿入・削除の応答待ちの間の編集は保留し、拒否されたら保留分を捨ててホストの段落一覧で描き直す |
+| PowerPoint の操作（`PptxEditOp`） | `setShapeText(slide, shape, paragraphs)`、`setTableCellText(slide, shape, row, col, paragraphs)`、`duplicateSlide` / `deleteSlide` / `moveSlide`。shape は `cNvPr@id`。段落内の `\n` は `a:br`。テキスト編集はスライドの `sldId@id`（`slideId`）も持ち、入力中に別の操作でスライドが動いても編集を始めたスライドに書く。スライド番号フィールドは実際の番号として比較する |
+| PowerPoint の書き換え | 旧段落と新段落を最長共通部分列で対応付け、テキストが同じ段落は XML ごとそのまま残す。変わった段落は `a:pPr` と `a:endParaRPr` を残して最初の run の `a:rPr` で書き直し、追加した段落は直前の段落の `a:pPr` / `a:endParaRPr` / `a:rPr` をコピー。`txBody` のないプレースホルダー・図形には作成（図形は PowerPoint と同じく中央揃え）。フィールド（`a:fld`）を含む段落の書き換え、レイアウト・マスターの図形、`mc:AlternateContent` 内の図形、グラフ・画像などのプレースホルダー、結合で隠れたセルは拒否 |
+| スライド操作 | `presentation.xml` の `sldIdLst`、`presentation.xml.rels`、`[Content_Types].xml`、セクション（`p14:sectionLst`）を更新。複製はスライドとノートをコピーして相互の rels を付け替え、`p14:creationId` を振り直す（コメントは複製しない。グラフ・SmartArt・埋め込み・タグを含むスライドは拒否）。削除はスライドとそのノート・コメントのパートを削除（他スライドからのリンク、目的別スライドショー、最後の 1 枚は拒否）。移動はセクションも移動先に合わせる |
+| PowerPoint の UI | 図形・表セルをダブルクリックすると、描画済みの要素をその場で contenteditable にする（Enter = 段落、Shift+Enter = 改行、Ctrl+Enter / 外側クリック = 確定、Esc = 取り消し）。編集後は画像を除いたモデルを再送し、Webview は手元の画像を使い回す。サムネイルの右クリック・ドラッグでスライド操作 |
+| Undo | テキスト編集は変更前の要素（Word は段落、PowerPoint は `txBody`）のクローンを位置から引き直して戻す。スライド操作はパッケージのジャーナル（`begin` / `commit` / `restore`）で戻す |
+| IME と Undo / 保存キー | 入力は textarea / contenteditable にそのまま任せる（`isComposing` 中の Enter などは処理しない）。入力途中（未確定の変更あり）の間は Ctrl+Z / Ctrl+Y を Webview 内で止め、ブラウザ標準の入力の取り消しにする。変更がなければ VS Code に渡り、文書の Undo になる。入力途中の Ctrl+S は入力を確定する編集を送ってから `save` メッセージを送り、ホストがその編集の適用後に保存する |
+| AI 用ツール | `officeWorkbench_editDocument`（段落番号で `setParagraph` / `insertParagraph` / `deleteParagraph`、`replaceText`）と `officeWorkbench_editPresentation`（`setText` / `setTableCell` / `replaceText` / スライド操作）。番号・図形 ID は `officeWorkbench_readFile` の `outline: true` で得る。適用はエディタと同じ `applyEdit` |
+
+**共通の修正**: JSZip は保存時に指定と違う圧縮方式のエントリを再圧縮するため、無圧縮（STORE）で格納されたエントリ（Word は画像をこう格納する）が変わっていた。読み込み時に元の方式を指定しておき、未変更エントリのバイト一致を保つ（Excel にも効く）。
+
+**検証**: core のテスト（各操作、拒否されるケース、Undo / Redo とリセット、未変更パートのバイト一致、Markdown 変換への反映、ツール用の変換）。ブラウザのプレビュー（Playwright）で、ダブルクリック編集・IME（CDP の `Input.imeSetComposition` / `insertText`）・入力途中の Ctrl+Z・確定・取り消し・表セル・空のプレースホルダー・スライドの複製 / 削除 / ドラッグ移動・Undo / Redo・保存、Word の編集パネル（分割・削除・拒否時の通知）を確認。編集したファイルは LibreOffice・python-docx / python-pptx で開けること、パッケージの整合性（Content_Types と rels の参照先）を確認した。Office（COM）と VS Code 本体での確認用に `npm run edited-samples` と `scripts/check-office.ps1` を用意した。
+
+**Phase 3 で割り切ったこと**: 文字単位の書式（太字・色など）の編集はできず、編集した段落は最初の run の書式にそろう。Word のヘッダー・フッター・脚注、PowerPoint のノートは編集できない。Word の編集パネルとページ表示の位置の連動はない。図形の移動・サイズ変更、スライドの新規追加（レイアウト選択）は未対応。
+
 ### Phase 4 の詳細
 
 **前半（実装済み）: テキスト抽出と Git 差分**

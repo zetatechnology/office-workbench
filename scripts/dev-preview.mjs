@@ -1,8 +1,9 @@
 // Browser harness for the viewer webviews: serves the built webview bundles with a mocked
 // `acquireVsCodeApi` that forwards messages to the real core backend over HTTP.
-// Workbooks are editable: Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S writes the result to a temp folder
-// (never over the source file).
-// Usage: npm run build && npm run preview [-- --dir <folder with Office files>] [--port 5178]
+// Workbooks, CSV files, documents and presentations are editable: Ctrl+Z / Ctrl+Y undo and redo,
+// Ctrl+S writes the result to a temp folder (never over the source file).
+// Usage: npm run build && npm run preview [-- --dir <folder with Office files>] [--port 5178] [--latency <ms>]
+// --latency delays every reply, to try the views against a slow host (e.g. a large document).
 import * as esbuild from 'esbuild';
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
@@ -18,6 +19,7 @@ const option = (name, fallback) => {
 };
 const fileDir = path.resolve(option('dir', path.join(root, 'test-fixtures')));
 const port = Number(option('port', process.env.PORT ?? 5178));
+const latency = Number(option('latency', 0));
 const webviewDir = path.join(root, 'packages/extension/dist/webview');
 
 // Bundle the core package for Node so this script can use the TypeScript sources directly.
@@ -32,32 +34,33 @@ await esbuild.build({
   format: 'esm',
   logLevel: 'warning',
 });
-const { ViewerBackend, WorkbookSession, CsvSession } = await import(pathToFileURL(coreBundle).href);
+const { ViewerBackend, WorkbookSession, CsvSession, WordSession, PresentationSession } = await import(pathToFileURL(coreBundle).href);
 const saveDir = path.join(os.tmpdir(), 'office-workbench-preview');
 
 const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', csv: 'xlsx', tsv: 'xlsx', tab: 'xlsx', pptx: 'pptx', pptm: 'pptx', pdf: 'pdf' };
 const isDelimited = (name) => /\.(csv|tsv|tab)$/i.test(name);
 const kindOf = (name) => KINDS[path.extname(name).slice(1).toLowerCase()];
 const backends = new Map();
-/** Editable workbooks: file → { session, undo: [], redo: [] }. */
-const workbooks = new Map();
+/** Editable files: file → { session, undo: [], redo: [] }. */
+const sessions = new Map();
+const SESSIONS = { xlsx: WorkbookSession, docx: WordSession, pptx: PresentationSession };
 
-async function handleWorkbook(file, message) {
+async function handleSession(file, message) {
   if (message.type === 'ready') {
     const data = new Uint8Array(await readFile(path.join(fileDir, file)));
-    const session = isDelimited(file) ? new CsvSession(file, data) : new WorkbookSession(file, data);
-    workbooks.set(file, { session, undo: [], redo: [] });
+    const Session = isDelimited(file) ? CsvSession : SESSIONS[kindOf(file)];
+    sessions.set(file, { session: new Session(file, data), undo: [], redo: [] });
   }
-  const state = workbooks.get(file);
+  const state = sessions.get(file);
   switch (message.type) {
     case 'edit':
       try {
         const edit = await state.session.edit(message.op);
         state.undo.push(edit);
         state.redo = [];
-        return edit.messages;
+        return [...edit.messages, { type: 'edited', ok: true }];
       } catch (e) {
-        return [{ type: 'notice', message: e.message }];
+        return [{ type: 'notice', message: e.message }, { type: 'edited', ok: false }];
       }
     case 'undo':
     case 'redo': {
@@ -152,14 +155,15 @@ function viewerHtml(file, kind, theme) {
       window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
       window.cancelAnimationFrame = (id) => clearTimeout(id);
     }
-    // Stand-ins for VS Code's undo/redo/save keybindings (preview only).
+    // Stand-ins for VS Code's undo/redo/save keybindings (preview only). Like VS Code's, this
+    // listens after the page's own handlers, which may keep undo keys for typing in progress.
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
       if (!(e.ctrlKey || e.metaKey) || !['z', 'y', 's'].includes(key)) return;
       if (document.activeElement?.matches?.('.cell-editor.active, input')) return;
       e.preventDefault();
       api.postMessage({ type: key === 's' ? 'save' : key === 'y' || e.shiftKey ? 'redo' : 'undo' });
-    }, true);
+    });
   </script>
   <script nonce="${nonce}" src="/webview/${kind}.js"></script>
 </body>
@@ -202,9 +206,10 @@ const server = createServer(async (req, res) => {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      if (kindOf(file) === 'xlsx') {
+      if (latency) await new Promise((resolve) => setTimeout(resolve, latency));
+      if (kindOf(file) !== 'pdf') {
         res.writeHead(200, { 'content-type': 'application/json' });
-        return res.end(JSON.stringify(encode(await handleWorkbook(file, message))));
+        return res.end(JSON.stringify(encode(await handleSession(file, message))));
       }
       if (message.type === 'ready') backends.delete(file);
       let backend = backends.get(file);
