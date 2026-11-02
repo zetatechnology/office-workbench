@@ -1,0 +1,90 @@
+:root {
+  --ow-toolbar-bg: var(--vscode-editorGroupHeader-tabsBackground, #f3f3f3);
+  --ow-border: var(--vscode-panel-border, #d4d4d4);
+  --ow-fg: var(--vscode-foreground, #333);
+  --ow-muted: var(--vscode-descriptionForeground, #717171);
+  --ow-bg: var(--vscode-editor-background, #fff);
+  --ow-canvas: var(--vscode-editorWidget-background, #e8e8e8);
+  --ow-accent: var(--vscode-focusBorder, #0078d4);
+  --ow-button-hover: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  /* Document surfaces stay "paper" colored so file colors render as authored. */
+  --ow-paper: #ffffff;
+  --ow-paper-fg: #000000;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ow-bg);
+  color: var(--ow-fg);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--ow-border);
+  background: var(--ow-toolbar-bg);
+  user-select: none;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.toolbar .label {
+  color: var(--ow-muted);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+button.tool {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ow-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.tool:hover {
+  background: var(--ow-button-hover);
+}
+
+button.tool:focus-visible {
+  outline: 1px solid var(--ow-accent);
+}
+
+.message {
+  margin: auto;
+  padding: 24px;
+  max-width: 640px;
+  text-align: center;
+  color: var(--ow-muted);
+  white-space: pre-wrap;
+}
+
+.message-error {
+  color: var(--vscode-errorForeground, #c00);
+}

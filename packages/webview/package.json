@@ -1,0 +1,10 @@
+{
+  "name": "@office-workbench/webview",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@office-workbench/core": "*",
+    "docx-preview": "^0.4.1"
+  }
+}

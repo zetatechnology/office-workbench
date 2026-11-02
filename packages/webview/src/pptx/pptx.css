@@ -1,0 +1,162 @@
+.pptx-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.thumbs {
+  flex: none;
+  width: 212px;
+  overflow-y: auto;
+  padding: 8px 8px 8px 0;
+  border-right: 1px solid var(--ow-border);
+  background: var(--ow-toolbar-bg);
+}
+
+.thumb {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 4px 4px 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--ow-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.thumb-number {
+  width: 24px;
+  text-align: right;
+  font-size: 11px;
+}
+
+.thumb-frame {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid transparent;
+  box-sizing: content-box;
+  box-shadow: 0 0 0 1px var(--ow-border);
+}
+
+.thumb.active .thumb-frame {
+  border-color: var(--ow-accent);
+}
+
+.thumb:hover .thumb-frame {
+  box-shadow: 0 0 0 1px var(--ow-accent);
+}
+
+.thumb.hidden-slide .thumb-frame {
+  opacity: 0.45;
+}
+
+.stage-column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--ow-canvas);
+}
+
+.stage > .slide {
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+
+.notes {
+  flex: none;
+  max-height: 25%;
+  overflow-y: auto;
+  padding: 8px 16px;
+  border-top: 1px solid var(--ow-border);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* Slide content */
+
+.slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  transform-origin: 0 0;
+  background: var(--ow-paper);
+  color: var(--ow-paper-fg);
+  user-select: text;
+}
+
+.slide .el {
+  position: absolute;
+  transform-origin: center center;
+}
+
+.slide .geometry,
+.slide .fill-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+
+.slide .fill-layer {
+  width: 100%;
+  height: 100%;
+}
+
+.slide .text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.slide .text.nowrap {
+  white-space: pre;
+}
+
+.slide .para {
+  margin: 0;
+}
+
+.slide .picture {
+  overflow: hidden;
+}
+
+.slide .picture img {
+  position: absolute;
+  max-width: none;
+}
+
+.slide .table table {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.slide .table td {
+  overflow: hidden;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.slide .unsupported {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #999;
+  background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.03) 0 8px, rgba(0, 0, 0, 0.06) 8px 16px);
+  color: #666;
+  font: 14px "Segoe UI", sans-serif;
+}

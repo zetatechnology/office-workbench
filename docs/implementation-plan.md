@@ -138,6 +138,13 @@ test-fixtures/ # 各形式のサンプルファイル（ラウンドトリップ
 
 **完了条件**: 代表的な fixture（各形式 3〜5 個）が崩れずに読める程度に表示でき、10 万セル規模の xlsx でもスクロールが実用的に動くこと。
 
+**実装メモ（Phase 1 時点）**
+- Webview UI は Preact を使わず素の TypeScript で実装（各ビューアのバンドルは Excel / PowerPoint とも約 10 KB）。
+- xlsx / pptx の解析は Extension Host 側（`core`）で行い、表示用モデルを Webview に送る。docx はバイト列を送って Webview 内の docx-preview で描画。
+- 10 万セルのシート解析は約 0.8 秒（テストで計測）。
+- fixture は `scripts/make-fixtures.ps1` で実際の Office（COM）から生成。現状は各形式 1 ファイルで、実ファイルでの確認を追加していく。
+- 未実装: Excel のウィンドウ枠の固定（行列見出しは固定済み）、共有数式の数式バー表示、PowerPoint のグラフ以外の図形の一部（未知のプリセットは矩形で代替）。
+
 ## 9. 決めておきたい論点
 1. **想定利用者と優先形式**: Excel 優先で良いか（編集の需要・実装コスト比が最も高いため推奨）。
 2. **Web 拡張（vscode.dev）対応を必須とするか**: 必須なら Node 依存を完全に排除する設計を初期から徹底する。

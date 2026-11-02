@@ -1,0 +1,25 @@
+.docx-host {
+  flex: 1;
+  overflow: auto;
+  background: var(--ow-canvas);
+}
+
+.docx-content {
+  min-width: min-content;
+}
+
+/* docx-preview wrapper: keep pages centred on the editor canvas instead of its default grey. */
+.docx-content .docx-wrapper {
+  background: transparent;
+  padding: 24px;
+}
+
+.docx-content .docx-wrapper > section.docx {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  margin-bottom: 24px;
+  color: var(--ow-paper-fg);
+}
+
+.zoom-label {
+  min-width: 48px;
+}

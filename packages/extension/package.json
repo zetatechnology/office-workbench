@@ -1,0 +1,54 @@
+{
+  "name": "office-workbench",
+  "displayName": "Office Workbench",
+  "description": "View Word, Excel and PowerPoint files inside VS Code.",
+  "version": "0.0.1",
+  "publisher": "office-workbench",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "officeWorkbench.docx",
+        "displayName": "Office Workbench: Word",
+        "selector": [
+          { "filenamePattern": "*.docx" },
+          { "filenamePattern": "*.docm" }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "officeWorkbench.xlsx",
+        "displayName": "Office Workbench: Excel",
+        "selector": [
+          { "filenamePattern": "*.xlsx" },
+          { "filenamePattern": "*.xlsm" }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "officeWorkbench.pptx",
+        "displayName": "Office Workbench: PowerPoint",
+        "selector": [
+          { "filenamePattern": "*.pptx" },
+          { "filenamePattern": "*.pptm" }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "dependencies": {
+    "@office-workbench/core": "*"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.90.0"
+  }
+}
