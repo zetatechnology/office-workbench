@@ -94,6 +94,18 @@
         "title": "Open as Text",
         "category": "Office Workbench",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "officeWorkbench.openAsMarkdown",
+        "title": "Open as Markdown",
+        "category": "Office Workbench",
+        "icon": "$(markdown)"
+      },
+      {
+        "command": "officeWorkbench.compareWithHead",
+        "title": "Compare with HEAD as Text",
+        "category": "Office Workbench",
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
@@ -107,6 +119,16 @@
           "command": "officeWorkbench.openAsText",
           "when": "activeCustomEditorId == officeWorkbench.csv",
           "group": "navigation"
+        },
+        {
+          "command": "officeWorkbench.openAsMarkdown",
+          "when": "activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "officeWorkbench.compareWithHead",
+          "when": "activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/ && config.git.enabled && gitOpenRepositoryCount != 0",
+          "group": "navigation@2"
         }
       ],
       "explorer/context": [
@@ -114,6 +136,16 @@
           "command": "officeWorkbench.openAsTable",
           "when": "resourceExtname =~ /^\\.(csv|tsv|tab)$/i",
           "group": "navigation@20"
+        },
+        {
+          "command": "officeWorkbench.openAsMarkdown",
+          "when": "resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i",
+          "group": "navigation@21"
+        },
+        {
+          "command": "officeWorkbench.compareWithHead",
+          "when": "resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i && config.git.enabled && gitOpenRepositoryCount != 0",
+          "group": "3_compare@20"
         }
       ],
       "commandPalette": [
@@ -124,6 +156,21 @@
         {
           "command": "officeWorkbench.openAsText",
           "when": "activeCustomEditorId == officeWorkbench.csv"
+        },
+        {
+          "command": "officeWorkbench.openAsMarkdown",
+          "when": "activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/ || resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i"
+        },
+        {
+          "command": "officeWorkbench.compareWithHead",
+          "when": "(activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/ || resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i) && gitOpenRepositoryCount != 0"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "officeWorkbench.compareWithHead",
+          "when": "scmProvider == git && resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i",
+          "group": "navigation@20"
         }
       ]
     }

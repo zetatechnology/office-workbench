@@ -12,3 +12,4 @@ export { formatValue, formatGeneral, isDateFormat, serialToDate } from './xlsx/n
 export type * from './xlsx/types';
 export { parsePresentation } from './pptx/presentation';
 export type * from './pptx/types';
+export { textKindOf, toMarkdown, type TextKind } from './text';
