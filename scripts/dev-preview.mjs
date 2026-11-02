@@ -2,7 +2,8 @@
 // `acquireVsCodeApi` that forwards messages to the real core backend over HTTP.
 // Workbooks, CSV files, documents and presentations are editable: Ctrl+Z / Ctrl+Y undo and redo,
 // Ctrl+S writes the result to a temp folder (never over the source file).
-// Usage: npm run build && npm run preview [-- --dir <folder with Office files>] [--port 5178]
+// Usage: npm run build && npm run preview [-- --dir <folder with Office files>] [--port 5178] [--latency <ms>]
+// --latency delays every reply, to try the views against a slow host (e.g. a large document).
 import * as esbuild from 'esbuild';
 import { createServer } from 'node:http';
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
@@ -18,6 +19,7 @@ const option = (name, fallback) => {
 };
 const fileDir = path.resolve(option('dir', path.join(root, 'test-fixtures')));
 const port = Number(option('port', process.env.PORT ?? 5178));
+const latency = Number(option('latency', 0));
 const webviewDir = path.join(root, 'packages/extension/dist/webview');
 
 // Bundle the core package for Node so this script can use the TypeScript sources directly.
@@ -204,6 +206,7 @@ const server = createServer(async (req, res) => {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (latency) await new Promise((resolve) => setTimeout(resolve, latency));
       if (kindOf(file) !== 'pdf') {
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify(encode(await handleSession(file, message))));

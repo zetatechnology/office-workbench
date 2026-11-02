@@ -2,23 +2,8 @@
 // inserted or deleted paragraph moves the ids after it in the same body or cell.
 import type { DocxEditOp } from '@office-workbench/core';
 
-/** `op` with its ids moved past an applied insert or delete; undefined when its paragraph was deleted. */
-export function remap(op: DocxEditOp, applied: DocxEditOp): DocxEditOp | undefined {
-  const move = (id: string) => moveId(id, applied);
-  switch (op.type) {
-    case 'setParagraphText':
-    case 'deleteParagraph': {
-      const id = move(op.id);
-      return id === undefined ? undefined : { ...op, id };
-    }
-    case 'insertParagraph': {
-      const after = move(op.after);
-      return after === undefined ? undefined : { ...op, after };
-    }
-  }
-}
-
-function moveId(id: string, applied: DocxEditOp): string | undefined {
+/** Where paragraph `id` is after an insert or delete; undefined for the deleted paragraph. */
+export function moveId(id: string, applied: DocxEditOp): string | undefined {
   if (applied.type === 'setParagraphText') return id;
   const at = applied.type === 'insertParagraph' ? applied.after : applied.id;
   if (applied.type === 'deleteParagraph' && (id === at || id.startsWith(`${at}/`))) return undefined;

@@ -100,7 +100,7 @@ onHostMessage((message) => {
       return outline.answered(message.ok);
     case 'docxOutline':
       blocks = message.blocks;
-      outline.render(blocks);
+      outline.update(blocks);
       schedulePreview();
       return;
     case 'docx': {

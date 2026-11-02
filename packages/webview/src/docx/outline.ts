@@ -1,36 +1,37 @@
 // The edit panel of the Word viewer: every paragraph of the body and of table cells as a text
 // box. Edits are sent as operations when a paragraph loses focus (or on Enter / Backspace for
-// splitting and deleting); the host replies to each with a new outline (or a refusal).
+// splitting and deleting); the host answers each one ("edited") after sending the new outline.
 //
-// Paragraph ids are positions, so an insert or delete shifts the ids after it. While one is
-// waiting for its reply, later edits are held back and then sent with their ids moved to match
-// (or dropped, when they were for the deleted paragraph).
+// The panel shows its own edits at once: Enter puts the new paragraph on screen (typing goes
+// straight into it) and Backspace removes the paragraph, and the ids of the paragraphs after it are
+// renumbered. Ids are positions, so the ids on screen are always the ones the document will have
+// once the edits sent so far are applied in order. Outlines from the host replace the screen only
+// when none of this panel's edits are outstanding. After an insert or delete, later edits wait for
+// its answer; if it is refused, they are dropped and the screen goes back to the host's outline.
 import type { DocxBlock, DocxEditOp, DocxParagraph, DocxTable } from '@office-workbench/core';
 import { el } from '../common/host';
-import { remap, siblingId } from './ids';
+import { moveId, siblingId } from './ids';
 
 export interface OutlineOptions {
   send(op: DocxEditOp): void;
 }
 
-interface Focus {
-  id: string;
-  start: number;
-  end: number;
-}
-
 export class Outline {
   readonly element = el('div', 'docx-outline');
   private readonly list = el('div', 'outline-list');
-  /** Paragraph text boxes by id, with the text the document has for them. */
-  private boxes = new Map<string, { box: HTMLTextAreaElement; text: string }>();
-  /** Where to put the caret after the next update (the paragraph an Enter moved to). */
-  private pending?: Focus;
+  /** Paragraph text boxes by id, in document order. */
+  private boxes = new Map<string, HTMLTextAreaElement>();
+  /** The text each box's paragraph has (or will have once the edits sent so far are applied). */
+  private readonly texts = new WeakMap<HTMLTextAreaElement, string>();
   /** Edits sent and not yet answered, oldest first. */
   private readonly sent: DocxEditOp[] = [];
-  /** An insert or delete waiting for its reply, and the edits made meanwhile (in ids from before it). */
+  /** An insert or delete waiting for its answer, and the edits made meanwhile. */
   private waiting?: DocxEditOp;
   private held: DocxEditOp[] = [];
+  /** The newest outline from the host, shown once this panel's edits are all answered. */
+  private latest?: DocxBlock[];
+  /** An edit was refused: typing on screen may belong to paragraphs that no longer line up. */
+  private refused = false;
 
   constructor(private readonly options: OutlineOptions) {
     const header = el('div', 'outline-header', 'Edit paragraphs');
@@ -40,30 +41,22 @@ export class Outline {
 
   /** Whether the focused paragraph has typing that is not in the document yet. */
   get typing(): boolean {
-    const focused = this.focused();
-    return !!focused && focused.box.value !== focused.text;
+    const box = this.focused();
+    return !!box && box.value !== this.texts.get(box);
   }
 
   /** Sends the focused paragraph's typing, keeping the focus there; returns whether there was any. */
   commitTyping(): boolean {
-    const focused = this.focused();
-    if (!focused || focused.box.value === focused.text) return false;
-    this.commit(focused.id, focused.box);
+    const box = this.focused();
+    if (!box || box.value === this.texts.get(box)) return false;
+    this.commit(box);
     return true;
   }
 
-  /** The host answered the oldest edit this view sent (its new outline was rendered before). */
-  answered(ok: boolean): void {
-    const op = this.sent.shift();
-    if (!ok) this.pending = undefined;
-    if (!op || op !== this.waiting) return;
-    this.waiting = undefined;
-    const held = this.held;
-    this.held = [];
-    for (const next of held) {
-      const mapped = ok ? remap(next, op) : next;
-      if (mapped) this.dispatch(mapped);
-    }
+  /** A new outline from the host (after an edit here or elsewhere, or an undo). */
+  update(blocks: DocxBlock[]): void {
+    this.latest = blocks;
+    if (!this.outstanding) this.render(blocks);
   }
 
   /** The whole document was (re)loaded: anything in flight no longer applies. */
@@ -71,7 +64,27 @@ export class Outline {
     this.sent.length = 0;
     this.waiting = undefined;
     this.held = [];
+    this.refused = false;
+    this.latest = blocks;
     this.render(blocks);
+  }
+
+  /** The host answered the oldest edit this panel sent. */
+  answered(ok: boolean): void {
+    const op = this.sent.shift();
+    if (!ok) this.refused = true;
+    if (op && op === this.waiting) {
+      this.waiting = undefined;
+      const held = this.held;
+      this.held = [];
+      // Edits made after a refused insert or delete were made on a screen that showed it.
+      if (ok) for (const next of held) this.dispatch(next);
+    }
+    if (!this.outstanding && this.latest) this.render(this.latest);
+  }
+
+  private get outstanding(): boolean {
+    return this.sent.length > 0 || this.held.length > 0;
   }
 
   private dispatch(op: DocxEditOp): void {
@@ -81,30 +94,34 @@ export class Outline {
     }
     this.sent.push(op);
     if (op.type !== 'setParagraphText') this.waiting = op;
-    if (op.type === 'insertParagraph') this.pending = { id: siblingId(op.after, 1), start: 0, end: 0 };
     this.options.send(op);
   }
 
-  render(blocks: DocxBlock[]): void {
-    // Typing in progress survives an update when its paragraph still holds the same text.
+  private render(blocks: DocxBlock[]): void {
+    // Typing in progress survives when its paragraph still holds the text the typing started from.
     const active = this.focused();
-    const draft = active && { id: active.id, value: active.box.value, text: active.text, start: active.box.selectionStart, end: active.box.selectionEnd };
+    const draft = active && {
+      id: active.dataset.id!,
+      value: active.value,
+      text: this.texts.get(active),
+      start: active.selectionStart,
+      end: active.selectionEnd,
+    };
+    const keepTyping = !this.refused;
+    this.refused = false;
     const scroll = this.list.scrollTop;
     this.boxes = new Map();
     this.list.replaceChildren(...blocks.map((b) => this.block(b)));
     this.list.scrollTop = scroll;
 
-    const target = this.pending ?? (draft && { id: draft.id, start: draft.start, end: draft.end });
-    this.pending = undefined;
-    const entry = target && this.boxes.get(target.id);
-    if (!entry) return;
-    if (draft && draft.id === target.id && draft.value !== draft.text && entry.text === draft.text) {
-      entry.box.value = draft.value;
-      fit(entry.box);
+    const box = draft && this.boxes.get(draft.id);
+    if (!box) return;
+    if (keepTyping && draft.value !== draft.text && this.texts.get(box) === draft.text) {
+      box.value = draft.value;
+      fit(box);
     }
-    entry.box.focus({ preventScroll: true });
-    entry.box.setSelectionRange(Math.min(target.start, entry.box.value.length), Math.min(target.end, entry.box.value.length));
-    entry.box.scrollIntoView({ block: 'nearest' });
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(Math.min(draft.start, box.value.length), Math.min(draft.end, box.value.length));
   }
 
   private block(block: DocxBlock): HTMLElement {
@@ -135,18 +152,24 @@ export class Outline {
       row.append(marker, text, el('span', 'outline-lock', '🔒'));
       return row;
     }
+    const box = this.textBox(p.id, p.text);
+    this.boxes.set(p.id, box);
+    row.append(marker, box);
+    return row;
+  }
+
+  private textBox(id: string, text: string): HTMLTextAreaElement {
     const box = el('textarea', 'outline-text');
-    box.value = p.text;
+    box.value = text;
     box.rows = 1;
     box.spellcheck = false;
-    box.dataset.id = p.id;
-    this.boxes.set(p.id, { box, text: p.text });
+    box.dataset.id = id;
+    this.texts.set(box, text);
     box.addEventListener('input', () => fit(box));
-    box.addEventListener('keydown', (e) => this.onKey(e, p, box));
-    box.addEventListener('blur', () => this.commit(p.id, box));
-    row.append(marker, box);
+    box.addEventListener('keydown', (e) => this.onKey(e, box));
+    box.addEventListener('blur', () => this.commit(box));
     requestAnimationFrame(() => fit(box));
-    return row;
+    return box;
   }
 
   private table(table: DocxTable): HTMLElement {
@@ -167,69 +190,95 @@ export class Outline {
     return wrap;
   }
 
-  private onKey(e: KeyboardEvent, p: DocxParagraph, box: HTMLTextAreaElement): void {
+  private onKey(e: KeyboardEvent, box: HTMLTextAreaElement): void {
     if (e.isComposing || e.keyCode === 229) return;
+    const id = box.dataset.id!;
     const { selectionStart: start, selectionEnd: end, value } = box;
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      // Like Word: the text after the caret moves to a new paragraph below.
+      // Like Word: the text after the caret moves to a new paragraph below, which gets the caret.
       e.preventDefault();
-      const entry = this.boxes.get(p.id)!;
       const before = value.slice(0, start);
       const after = value.slice(end);
-      const update = before === entry.text ? undefined : before;
-      // Show the split at once, so another Enter splits what is on screen.
-      entry.text = before;
+      const op: DocxEditOp = { type: 'insertParagraph', after: id, text: after };
+      if (before !== this.texts.get(box)) op.update = before;
+      this.dispatch(op);
       box.value = before;
+      this.texts.set(box, before);
       fit(box);
-      this.dispatch({ type: 'insertParagraph', after: p.id, text: after, update });
+      this.renumber(op);
+      const row = box.closest('.outline-row') as HTMLElement;
+      const added = row.cloneNode(false) as HTMLElement;
+      const created = this.textBox(siblingId(id, 1), after);
+      added.append(row.querySelector('.outline-marker')!.cloneNode(true), created);
+      row.after(added);
+      this.reindex();
+      created.focus();
+      created.setSelectionRange(0, 0);
     } else if (e.key === 'Backspace' && !value && start === 0 && end === 0) {
-      const previous = this.neighbour(p.id, -1);
+      const previous = this.neighbour(id, -1);
       if (!previous) return;
       e.preventDefault();
-      // Hide the paragraph and move on at once, so another Backspace does not delete twice.
-      this.boxes.delete(p.id);
-      (box.closest('.outline-row') as HTMLElement).hidden = true;
-      previous.box.focus();
-      previous.box.setSelectionRange(previous.box.value.length, previous.box.value.length);
-      this.dispatch({ type: 'deleteParagraph', id: p.id });
+      const op: DocxEditOp = { type: 'deleteParagraph', id };
+      this.dispatch(op);
+      // Without its id the box cannot commit typing (its blur fires on removal).
+      box.removeAttribute('data-id');
+      box.closest('.outline-row')!.remove();
+      this.renumber(op);
+      this.reindex();
+      previous.focus();
+      previous.setSelectionRange(previous.value.length, previous.value.length);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      box.value = this.boxes.get(p.id)?.text ?? p.text;
+      box.value = this.texts.get(box) ?? box.value;
       fit(box);
     } else if (e.key === 'Tab' && !e.ctrlKey) {
       e.preventDefault();
       box.setRangeText('\t', start, end, 'end');
       fit(box);
     } else if ((e.key === 'ArrowUp' && start === 0 && end === 0) || (e.key === 'ArrowDown' && start === value.length)) {
-      const target = this.neighbour(p.id, e.key === 'ArrowUp' ? -1 : 1);
+      const target = this.neighbour(id, e.key === 'ArrowUp' ? -1 : 1);
       if (!target) return;
       e.preventDefault();
-      target.box.focus();
-      const at = e.key === 'ArrowUp' ? target.box.value.length : 0;
-      target.box.setSelectionRange(at, at);
+      target.focus();
+      const at = e.key === 'ArrowUp' ? target.value.length : 0;
+      target.setSelectionRange(at, at);
     }
   }
 
-  private commit(id: string, box: HTMLTextAreaElement): void {
-    const entry = this.boxes.get(id);
-    if (entry?.box !== box || box.value === entry.text) return;
-    entry.text = box.value;
+  private commit(box: HTMLTextAreaElement): void {
+    const id = box.dataset.id;
+    if (!id || this.boxes.get(id) !== box || box.value === this.texts.get(box)) return;
+    this.texts.set(box, box.value);
     this.dispatch({ type: 'setParagraphText', id, text: box.value });
   }
 
-  /** The editable paragraph before or after `id` in document order. */
-  private neighbour(id: string, delta: -1 | 1): { id: string; text: string; box: HTMLTextAreaElement } | undefined {
-    const ids = [...this.boxes.keys()];
-    const at = ids.indexOf(id) + delta;
-    const target = ids[at];
-    return target === undefined ? undefined : { id: target, ...this.boxes.get(target)! };
+  /** Moves the ids on screen past an insert or delete just made here. */
+  private renumber(op: DocxEditOp): void {
+    for (const box of this.boxes.values()) {
+      if (!box.dataset.id) continue; // the deleted paragraph
+      const moved = moveId(box.dataset.id, op);
+      if (moved !== undefined) box.dataset.id = moved;
+    }
   }
 
-  private focused(): { id: string; box: HTMLTextAreaElement; text: string } | undefined {
+  /** Rebuilds the id → box map from the boxes on screen, in document order. */
+  private reindex(): void {
+    this.boxes = new Map(
+      Array.from(this.list.querySelectorAll<HTMLTextAreaElement>('textarea.outline-text')).map((box) => [box.dataset.id!, box]),
+    );
+  }
+
+  /** The editable paragraph before or after `id` in document order. */
+  private neighbour(id: string, delta: -1 | 1): HTMLTextAreaElement | undefined {
+    const ids = [...this.boxes.keys()];
+    const at = ids.indexOf(id);
+    return at < 0 ? undefined : this.boxes.get(ids[at + delta]);
+  }
+
+  private focused(): HTMLTextAreaElement | undefined {
     const active = document.activeElement;
     if (!(active instanceof HTMLTextAreaElement) || !active.dataset.id) return undefined;
-    const entry = this.boxes.get(active.dataset.id);
-    return entry?.box === active ? { id: active.dataset.id, ...entry } : undefined;
+    return this.boxes.get(active.dataset.id) === active ? active : undefined;
   }
 }
 
