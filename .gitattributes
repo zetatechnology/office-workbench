@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.docm binary
+*.xlsm binary
+*.pptm binary
+*.xls binary
+*.doc binary
+*.ppt binary
