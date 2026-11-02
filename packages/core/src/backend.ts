@@ -41,6 +41,8 @@ export class ViewerBackend {
     switch (this.kind) {
       case 'docx':
         return { type: 'docx', fileName: this.fileName, data: await this.read() };
+      case 'pdf':
+        return { type: 'pdf', fileName: this.fileName, data: await this.read() };
       case 'xlsx':
         return { type: 'workbook', fileName: this.fileName, info: (await this.openWorkbook()).info() };
       case 'pptx': {

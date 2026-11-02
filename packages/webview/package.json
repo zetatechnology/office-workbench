@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@office-workbench/core": "*",
-    "docx-preview": "^0.4.1"
+    "docx-preview": "^0.4.1",
+    "pdfjs-dist": "6.4.299"
   }
 }

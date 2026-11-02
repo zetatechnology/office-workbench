@@ -1,7 +1,7 @@
 {
   "name": "office-workbench",
   "displayName": "Office Workbench",
-  "description": "View Word, Excel and PowerPoint files inside VS Code.",
+  "description": "View Word, Excel, PowerPoint and PDF files inside VS Code.",
   "version": "0.0.1",
   "publisher": "office-workbench",
   "private": true,
@@ -31,6 +31,14 @@
         "selector": [
           { "filenamePattern": "*.xlsx" },
           { "filenamePattern": "*.xlsm" }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "officeWorkbench.pdf",
+        "displayName": "Office Workbench: PDF",
+        "selector": [
+          { "filenamePattern": "*.pdf" }
         ],
         "priority": "default"
       },

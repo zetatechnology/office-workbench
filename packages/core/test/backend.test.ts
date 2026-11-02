@@ -12,6 +12,12 @@ describe('ViewerBackend', () => {
     if (message.type === 'docx') expect(message.data.byteLength).toBeGreaterThan(1000);
   });
 
+  it('sends PDFs as raw bytes', async () => {
+    const [message] = await backend('pdf').handle({ type: 'ready' });
+    expect(message.type).toBe('pdf');
+    if (message.type === 'pdf') expect(new TextDecoder().decode(message.data.subarray(0, 5))).toBe('%PDF-');
+  });
+
   it('loads workbook structure first and sheets on request', async () => {
     const b = backend('xlsx');
     const [info] = await b.handle({ type: 'ready' });

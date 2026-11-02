@@ -1,4 +1,4 @@
-﻿# Creates sample.docx with Word.
+﻿# Creates sample.docx (and sample.pdf exported from it) with Word.
 # Invoked by ../make-fixtures.ps1; each Office app runs in its own PowerShell process.
 param([Parameter(Mandatory)][string]$Out, [string]$Png)
 $ErrorActionPreference = 'Stop'
@@ -57,6 +57,8 @@ try {
   $doc.Sections.Item(1).Headers.Item(1).Range.Text = 'ヘッダー'
   $doc.Sections.Item(1).Footers.Item(1).PageNumbers.Add() | Out-Null
   $doc.SaveAs2([string](Join-Path $Out 'sample.docx'), 16) # wdFormatDocumentDefault
+  # The same document as PDF, with an outline built from the headings (wdExportCreateHeadingBookmarks).
+  $doc.ExportAsFixedFormat([string](Join-Path $Out 'sample.pdf'), 17, $false, 0, 0, 1, 1, 0, $true, $true, 1)
   $doc.Close($false)
 } finally {
   $word.Quit()

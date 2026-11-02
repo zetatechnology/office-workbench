@@ -1,0 +1,131 @@
+.toolbar .sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--ow-border);
+}
+
+.toolbar input,
+.toolbar select {
+  height: 24px;
+  border: 1px solid var(--vscode-input-border, var(--ow-border));
+  border-radius: 2px;
+  background: var(--vscode-input-background, var(--ow-bg));
+  color: var(--vscode-input-foreground, var(--ow-fg));
+  font: inherit;
+}
+
+.toolbar input:focus,
+.toolbar select:focus {
+  outline: 1px solid var(--ow-accent);
+  outline-offset: -1px;
+}
+
+.page-input {
+  width: 48px;
+  text-align: right;
+  padding: 0 4px;
+}
+
+.search-input {
+  width: 180px;
+  padding: 0 6px;
+}
+
+.find-status {
+  min-width: 64px;
+}
+
+button.tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pdf-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.outline {
+  display: none;
+  flex: none;
+  width: 240px;
+  overflow: auto;
+  padding: 6px 0;
+  border-right: 1px solid var(--ow-border);
+  background: var(--ow-toolbar-bg);
+  user-select: none;
+}
+
+.pdf-body.with-outline .outline {
+  display: block;
+}
+
+.outline ul {
+  margin: 0;
+  padding-left: 12px;
+  list-style: none;
+}
+
+.outline > ul {
+  padding-left: 4px;
+}
+
+.outline li.collapsed > ul {
+  display: none;
+}
+
+.outline li.collapsed > .outline-item .twisty {
+  transform: rotate(-90deg);
+}
+
+.outline-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.outline-item.link {
+  cursor: pointer;
+}
+
+.outline-item:hover {
+  background: var(--ow-button-hover);
+}
+
+.outline-item .twisty {
+  width: 14px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--ow-muted);
+}
+
+.outline-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viewer-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* pdf.js requires an absolutely positioned scroll container. */
+.viewer-container {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  outline: none;
+  background: var(--ow-canvas);
+}
+
+.pdfViewer .page {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: none;
+  margin: 12px auto;
+}

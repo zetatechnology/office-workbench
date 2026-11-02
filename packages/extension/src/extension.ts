@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ViewerKind } from '@office-workbench/core';
 import { OfficeViewerProvider } from './provider';
 
-const KINDS: ViewerKind[] = ['docx', 'xlsx', 'pptx'];
+const KINDS: ViewerKind[] = ['docx', 'xlsx', 'pptx', 'pdf'];
 
 export function activate(context: vscode.ExtensionContext): void {
   for (const kind of KINDS) {

@@ -31,7 +31,7 @@ await esbuild.build({
 });
 const { ViewerBackend } = await import(pathToFileURL(coreBundle).href);
 
-const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', pptx: 'pptx', pptm: 'pptx' };
+const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', pptx: 'pptx', pptm: 'pptx', pdf: 'pdf' };
 const kindOf = (name) => KINDS[path.extname(name).slice(1).toLowerCase()];
 const backends = new Map();
 
@@ -68,7 +68,8 @@ function viewerHtml(file, kind, theme) {
   const vars = Object.entries(THEMES[theme] ?? THEMES.light).map(([k, v]) => `${k}: ${v};`).join(' ');
   const nonce = 'preview';
   // Same policy as the extension (see packages/extension/src/html.ts), with 'self' standing in for cspSource.
-  const csp = `default-src 'none'; img-src 'self' blob: data:; font-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'`;
+  const pdf = kind === 'pdf' ? " 'wasm-unsafe-eval'; worker-src blob:" : '';
+  const csp = `default-src 'none'; img-src 'self' blob: data:; font-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; script-src 'nonce-${nonce}'${pdf}`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,7 +79,7 @@ function viewerHtml(file, kind, theme) {
   <style>html { ${vars} }</style>
   <link rel="stylesheet" href="/webview/${kind}.css">
 </head>
-<body>
+<body data-assets="/webview">
   <div id="app"></div>
   <script nonce="${nonce}">
     const file = ${JSON.stringify(file)};
@@ -128,9 +129,10 @@ const server = createServer(async (req, res) => {
       return res.end(viewerHtml(file, kind, url.searchParams.get('theme') ?? 'light'));
     }
     if (url.pathname.startsWith('/webview/')) {
-      const name = path.basename(url.pathname);
+      const name = path.normalize(decodeURIComponent(url.pathname.slice('/webview/'.length)));
+      if (name.startsWith('..') || path.isAbsolute(name)) throw new Error('Invalid path');
       const body = await readFile(path.join(webviewDir, name));
-      const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'application/octet-stream';
+      const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream';
       res.writeHead(200, { 'content-type': type });
       return res.end(body);
     }
