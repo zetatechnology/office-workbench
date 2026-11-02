@@ -1,9 +1,12 @@
 // Browser harness for the viewer webviews: serves the built webview bundles with a mocked
 // `acquireVsCodeApi` that forwards messages to the real core backend over HTTP.
+// Workbooks are editable: Ctrl+Z / Ctrl+Y undo and redo, Ctrl+S writes the result to a temp folder
+// (never over the source file).
 // Usage: npm run build && npm run preview [-- --dir <folder with Office files>] [--port 5178]
 import * as esbuild from 'esbuild';
 import { createServer } from 'node:http';
-import { readFile, readdir, mkdir } from 'node:fs/promises';
+import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -29,11 +32,48 @@ await esbuild.build({
   format: 'esm',
   logLevel: 'warning',
 });
-const { ViewerBackend } = await import(pathToFileURL(coreBundle).href);
+const { ViewerBackend, WorkbookSession } = await import(pathToFileURL(coreBundle).href);
+const saveDir = path.join(os.tmpdir(), 'office-workbench-preview');
 
 const KINDS = { docx: 'docx', docm: 'docx', xlsx: 'xlsx', xlsm: 'xlsx', pptx: 'pptx', pptm: 'pptx', pdf: 'pdf' };
 const kindOf = (name) => KINDS[path.extname(name).slice(1).toLowerCase()];
 const backends = new Map();
+/** Editable workbooks: file → { session, undo: [], redo: [] }. */
+const workbooks = new Map();
+
+async function handleWorkbook(file, message) {
+  if (message.type === 'ready') {
+    workbooks.set(file, { session: new WorkbookSession(file, new Uint8Array(await readFile(path.join(fileDir, file)))), undo: [], redo: [] });
+  }
+  const state = workbooks.get(file);
+  switch (message.type) {
+    case 'edit':
+      try {
+        const edit = await state.session.edit(message.op);
+        state.undo.push(edit);
+        state.redo = [];
+        return edit.messages;
+      } catch (e) {
+        return [{ type: 'notice', message: e.message }];
+      }
+    case 'undo':
+    case 'redo': {
+      const edit = state[message.type].pop();
+      if (!edit) return [];
+      state[message.type === 'undo' ? 'redo' : 'undo'].push(edit);
+      return edit[message.type]();
+    }
+    case 'save': {
+      await mkdir(saveDir, { recursive: true });
+      const target = path.join(saveDir, file);
+      await writeFile(target, await state.session.save());
+      console.log(`Saved ${target}`);
+      return [{ type: 'notice', message: `Saved to ${target}` }];
+    }
+    default:
+      return state.session.handle(message);
+  }
+}
 
 const THEMES = {
   light: {
@@ -90,15 +130,33 @@ function viewerHtml(file, kind, theme) {
       }
       return value;
     };
-    window.acquireVsCodeApi = () => ({
+    // Requests are queued so replies arrive in order, as with VS Code's postMessage.
+    let queue = Promise.resolve();
+    const api = {
       postMessage(message) {
-        fetch('/api?file=' + encodeURIComponent(file), { method: 'POST', body: JSON.stringify(message) })
+        queue = queue
+          .then(() => fetch('/api?file=' + encodeURIComponent(file), { method: 'POST', body: JSON.stringify(message) }))
           .then((r) => r.json())
-          .then((list) => list.forEach((m) => window.dispatchEvent(new MessageEvent('message', { data: revive(m) }))));
+          .then((list) => list.forEach((m) => window.dispatchEvent(new MessageEvent('message', { data: revive(m) }))))
+          .catch((e) => console.error(e));
       },
       getState() { try { return JSON.parse(sessionStorage.getItem(file) ?? 'null'); } catch { return null; } },
       setState(state) { try { sessionStorage.setItem(file, JSON.stringify(state)); } catch {} },
-    });
+    };
+    window.acquireVsCodeApi = () => api;
+    // ?raf=timeout: animation frames never fire while a browser window is occluded; use timers instead.
+    if (new URLSearchParams(location.search).get('raf') === 'timeout') {
+      window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+      window.cancelAnimationFrame = (id) => clearTimeout(id);
+    }
+    // Stand-ins for VS Code's undo/redo/save keybindings (preview only).
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey) || !['z', 'y', 's'].includes(key)) return;
+      if (document.activeElement?.matches?.('.cell-editor.active, input')) return;
+      e.preventDefault();
+      api.postMessage({ type: key === 's' ? 'save' : key === 'y' || e.shiftKey ? 'redo' : 'undo' });
+    }, true);
   </script>
   <script nonce="${nonce}" src="/webview/${kind}.js"></script>
 </body>
@@ -141,6 +199,10 @@ const server = createServer(async (req, res) => {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (kindOf(file) === 'xlsx') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify(encode(await handleWorkbook(file, message))));
+      }
       if (message.type === 'ready') backends.delete(file);
       let backend = backends.get(file);
       if (!backend) {

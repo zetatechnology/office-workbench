@@ -2,13 +2,14 @@
 // same logic serves the extension and the browser preview harness.
 import { parsePresentation } from './pptx/presentation';
 import type { HostMessage, ViewerKind, WebviewMessage } from './protocol';
-import { Workbook } from './xlsx/workbook';
+import { WorkbookSession } from './xlsx/session';
 
 /** Files larger than this are refused rather than risking the extension host's memory. */
 export const MAX_FILE_BYTES = 200 * 1024 * 1024;
 
+/** Read-only request handling (workbooks open read-only here; editing uses WorkbookSession). */
 export class ViewerBackend {
-  private workbook?: Promise<Workbook>;
+  private workbook?: Promise<WorkbookSession>;
 
   constructor(
     private readonly kind: ViewerKind,
@@ -27,10 +28,9 @@ export class ViewerBackend {
         case 'ready':
           this.invalidate();
           return [await this.load()];
-        case 'loadSheet': {
-          const workbook = await this.openWorkbook();
-          return [{ type: 'sheet', sheet: await workbook.sheet(message.index) }];
-        }
+        case 'loadSheet':
+        case 'edit':
+          return (await this.openWorkbook()).handle(message);
       }
     } catch (e) {
       return [{ type: 'error', message: e instanceof Error ? e.message : String(e) }];
@@ -43,8 +43,11 @@ export class ViewerBackend {
         return { type: 'docx', fileName: this.fileName, data: await this.read() };
       case 'pdf':
         return { type: 'pdf', fileName: this.fileName, data: await this.read() };
-      case 'xlsx':
-        return { type: 'workbook', fileName: this.fileName, info: (await this.openWorkbook()).info() };
+      case 'xlsx': {
+        const [message] = await (await this.openWorkbook()).handle({ type: 'ready' });
+        if (message.type === 'error') throw new Error(message.message);
+        return message;
+      }
       case 'pptx': {
         const { presentation, media } = await parsePresentation(await this.read());
         return {
@@ -60,9 +63,9 @@ export class ViewerBackend {
     }
   }
 
-  private openWorkbook(): Promise<Workbook> {
+  private openWorkbook(): Promise<WorkbookSession> {
     if (!this.workbook) {
-      this.workbook = this.read().then((data) => Workbook.open(data));
+      this.workbook = this.read().then((data) => new WorkbookSession(this.fileName, data, false));
       this.workbook.catch(() => (this.workbook = undefined));
     }
     return this.workbook;

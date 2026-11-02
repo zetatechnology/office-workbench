@@ -144,7 +144,23 @@ test-fixtures/ # 各形式のサンプルファイル（ラウンドトリップ
 - xlsx / pptx の解析は Extension Host 側（`core`）で行い、表示用モデルを Webview に送る。docx はバイト列を送って Webview 内の docx-preview で描画。
 - 10 万セルのシート解析は約 0.8 秒（テストで計測）。
 - fixture は `scripts/make-fixtures.ps1` で実際の Office（COM）から生成。現状は各形式 1 ファイルで、実ファイルでの確認を追加していく。
-- 未実装: Excel のウィンドウ枠の固定（行列見出しは固定済み）、共有数式の数式バー表示、PowerPoint のグラフ以外の図形の一部（未知のプリセットは矩形で代替）。
+- 未実装: Excel のウィンドウ枠の固定（行列見出しは固定済み）、PowerPoint のグラフ以外の図形の一部（未知のプリセットは矩形で代替）。共有数式の数式バー表示は Phase 2 で対応。
+
+### Phase 2 の詳細（Excel 編集）
+
+| 項目 | 内容 |
+|---|---|
+| VS Code 統合 | xlsx を `CustomEditorProvider` に置き換え。編集ごとに `onDidChangeCustomDocument` を発火（Undo/Redo・dirty 表示）、save / saveAs / revert / backup（Hot Exit）。未保存の変更がなければ外部での変更を再読込 |
+| 操作（`EditOp`） | `setCells`（値・数式・クリア）、`clearRange`、`insertRows/deleteRows/insertCols/deleteCols`、`addSheet/renameSheet/deleteSheet`。Webview は操作を送るだけで、適用・Undo は Extension Host（`WorkbookSession`）が行う |
+| セル編集 | `<c>` 要素だけを書き換え（スタイル・拡張属性は保持）。文字列は `inlineStr` で書き、sharedStrings は変更しない。日付・% などは必要に応じて `cellXfs` に書式を追加。共有数式の一部を編集するとそのグループを通常の数式に展開 |
+| 行列の挿入削除 | セル位置、全シート・名前定義・グラフ系列の数式参照、結合セル、条件付き書式・入力規則・ハイパーリンクの範囲、列幅、ウィンドウ枠の固定、テーブル範囲を移動。テーブルを分断する操作は拒否 |
+| シート操作 | workbook.xml / rels / `[Content_Types].xml` を更新。名前変更・削除で他シートの参照、名前定義、グラフ、ピボットのソースを更新（削除は `#REF!`） |
+| Undo | セル編集は変更前の `<c>` を保存して復元。構造変更はパッケージのジャーナル（触ったパートの変更前内容）を記録して復元 |
+| 保存時の処理 | 変更シートの `<dimension>` 再計算、`calcChain.xml` 削除、`calcPr@fullCalcOnLoad="1"`。変更していないパートは元の圧縮バイト列のまま |
+
+**検証**: core のテスト（未変更パートのバイト一致、Undo、参照の移動）に加え、セル編集・行列操作・シート操作を組み合わせたファイルと VS Code から保存したファイルを Excel（COM）で開き、修復なしで開けること・再計算結果が正しいことを確認。VS Code 上では CDP 経由の実キー入力で、入力・IME・Delete・Ctrl+Z/Y/S、行挿入、シート追加、外部変更の再読込を確認。
+
+**Phase 2 で割り切ったこと**: 数式の再計算はしない（入力した数式は Excel で開くまで値が空で、グリッドには数式を斜体で表示）。図形・画像のアンカーは行列操作で移動しない。セル書式（太字・色など）の変更、行高・列幅の変更、シートの並べ替え・非表示化、xls/csv は未対応。
 
 ## 9. 決めておきたい論点
 1. **想定利用者と優先形式**: Excel 優先で良いか（編集の需要・実装コスト比が最も高いため推奨）。

@@ -4,9 +4,9 @@ VS Code 上で Word / Excel / PowerPoint（と PDF）ファイルを閲覧・操
 
 - 実装方針: [docs/implementation-plan.md](docs/implementation-plan.md)
 
-## 現在の状態（Phase 1 / 1.5: 閲覧）
+## 現在の状態（Phase 1 / 1.5: 閲覧、Phase 2: Excel 編集）
 
-`.docx` / `.xlsx` / `.pptx`（およびマクロ付きの `.docm` / `.xlsm` / `.pptm`）と `.pdf` をエディタで開くと、読み取り専用で表示します。
+`.docx` / `.xlsx` / `.pptx`（およびマクロ付きの `.docm` / `.xlsm` / `.pptm`）と `.pdf` をエディタで開いて表示します。Excel は編集・保存もできます（それ以外は読み取り専用）。
 
 | 形式 | 表示内容 |
 |---|---|
@@ -16,6 +16,20 @@ VS Code 上で Word / Excel / PowerPoint（と PDF）ファイルを閲覧・操
 | PDF | PDF.js による表示、ページ移動、ズーム（自動 / 幅 / ページ全体 / 倍率）、文字の検索・選択、目次（しおり）、日本語 CMap 対応 |
 
 グラフ・SmartArt・条件付き書式などは未対応で、プレースホルダーまたは「Not shown」として表示します。
+
+### Excel の編集
+
+| 操作 | 方法 |
+|---|---|
+| セル入力 | セルを選んでそのまま入力（日本語 IME 可）、F2 / ダブルクリックで既存値を編集、数式バーでも編集可。Enter / Tab で確定、Esc で取り消し、Alt+Enter で改行、Ctrl+Enter で選択範囲に一括入力 |
+| 入力値の解釈 | 数値・`1,234`・`12.5%`・日付（`2026/1/15`）・時刻・TRUE/FALSE・`=数式`。`'` で始めると文字列。書式が「標準」のセルには日付・パーセント等の表示形式を自動で付与 |
+| 範囲選択 | ドラッグ、Shift+クリック / Shift+矢印、行・列見出しのクリック、Ctrl+A |
+| クリア・コピー・貼り付け | Delete で内容をクリア、Ctrl+C / Ctrl+X / Ctrl+V（Excel 互換のタブ区切りテキスト） |
+| 行・列 | 右クリックメニューから挿入・削除（数式・結合セル・グラフの参照範囲・ウィンドウ枠の固定なども追従） |
+| シート | タブの「+」で追加、ダブルクリックで名前変更、右クリックで削除（他シート・名前定義・グラフの参照も更新） |
+| 元に戻す・保存 | VS Code の Ctrl+Z / Ctrl+Y / Ctrl+S。未保存の変更は VS Code のバックアップ（Hot Exit）で保持 |
+
+保存は「変更したパートだけを書き換える」方式で、それ以外の ZIP エントリ（グラフ・画像・マクロ等）は元のバイト列のまま残します。数式は再計算しないため、入力した数式の結果は Excel で開いたときに計算されます（保存時に `fullCalcOnLoad` を設定し、`calcChain.xml` を削除）。
 
 ## 開発
 
@@ -28,7 +42,7 @@ npm run typecheck
 ```
 
 - **VS Code で動作確認**: このフォルダを VS Code で開き、F5（Run Extension）。`test-fixtures/` を開いた拡張開発ホストが起動します。
-- **ブラウザで Webview を確認**: `npm run build && npm run preview` → http://localhost:5178/ （`-- --dir <フォルダ>` で任意のファイルを表示）
+- **ブラウザで Webview を確認**: `npm run build && npm run preview` → http://localhost:5178/ （`-- --dir <フォルダ>` で任意のファイルを表示）。Excel は編集でき、Ctrl+Z / Ctrl+Y で元に戻す・やり直し、Ctrl+S で一時フォルダ（`%TEMP%/office-workbench-preview`）へ保存します（元ファイルは変更しません）
 - **VSIX 作成**: `npm run package`
 - **テスト用ファイルの再生成**: `npm run fixtures`（Windows + Microsoft Office が必要。`sample.pdf` は Word から書き出し。生成物はコミット済み）
 
@@ -38,8 +52,8 @@ npm run typecheck
 
 ```
 packages/
-  core/       OOXML 読み取り（xlsx / pptx）、数値書式、Webview とのメッセージ定義。VS Code 非依存
-  extension/  VS Code 拡張本体（CustomReadonlyEditorProvider）
+  core/       OOXML 読み書き（xlsx の編集・保存、pptx の読み取り）、数値書式、Webview とのメッセージ定義。VS Code 非依存
+  extension/  VS Code 拡張本体（Excel は CustomEditorProvider、他は CustomReadonlyEditorProvider）
   webview/    Webview UI（Word / Excel / PowerPoint / PDF ビューア）
 scripts/      ビルド、プレビュー用サーバー、フィクスチャ生成
 test-fixtures/ Office で作成したサンプルファイル

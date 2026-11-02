@@ -41,11 +41,13 @@ export interface CellData {
   c: number;
   /** Display text after number formatting. */
   v: string;
-  /** Index into SheetData.styles. */
+  /** Cell format (xf) index; key into SheetData.styles. */
   s: number;
   t: CellKind;
   /** Formula text without the leading "=". */
   f?: string;
+  /** Text for the cell editor when it differs from `v` (raw number, y/m/d date, "=formula"). */
+  input?: string;
 }
 
 export interface MergeRange {
@@ -68,10 +70,26 @@ export interface SheetData {
   colWidths: Record<number, number>;
   rowHeights: Record<number, number>;
   cells: CellData[];
-  styles: CellStyle[];
+  /** Resolved styles of the cell formats used on the sheet, keyed by xf index. */
+  styles: Record<number, CellStyle>;
   merges: MergeRange[];
   frozen?: { rows: number; cols: number };
   showGridLines: boolean;
   /** Human-readable list of content this viewer does not render (charts, images, ...). */
   unsupported: string[];
 }
+
+export interface CellAddress {
+  r: number;
+  c: number;
+}
+
+/** Edits applied by the extension host; each one is a single undo step. */
+export type EditOp =
+  /** `input` is what the user typed: a value, "=formula", or "" to clear the cell. */
+  | { type: 'setCells'; sheet: number; cells: (CellAddress & { input: string })[] }
+  | { type: 'clearRange'; sheet: number; range: MergeRange }
+  | { type: 'insertRows' | 'deleteRows' | 'insertCols' | 'deleteCols'; sheet: number; at: number; count: number }
+  | { type: 'addSheet'; name?: string }
+  | { type: 'renameSheet'; sheet: number; name: string }
+  | { type: 'deleteSheet'; sheet: number };

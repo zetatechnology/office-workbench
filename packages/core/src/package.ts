@@ -1,7 +1,7 @@
 // Read access to an OOXML package (a ZIP of XML parts plus relationship files).
 import JSZip from 'jszip';
+import { XMLSerializer } from '@xmldom/xmldom';
 import { attr, children, parseXml, type Document } from './xml';
-
 
 export interface Relationship {
   id: string;
@@ -17,9 +17,15 @@ const MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024;
 
 export class PackageError extends Error {}
 
+/** Prior contents of the parts touched while journaling; `null` means the part did not exist. */
+export type PartSnapshot = Map<string, string | Uint8Array | null>;
+
 export class OoxmlPackage {
   private readonly xmlCache = new Map<string, Promise<Document | undefined>>();
   private readonly relsCache = new Map<string, Promise<Map<string, Relationship>>>();
+  /** Parts whose parsed DOM was modified and must be serialized on save. */
+  private readonly dirty = new Set<string>();
+  private journal?: PartSnapshot;
 
   private constructor(private readonly zip: JSZip) {}
 
@@ -86,11 +92,91 @@ export class OoxmlPackage {
     throw new PackageError('The package has no main document part.');
   }
 
+  /** Part paths in the package, excluding directory entries. */
+  parts(): string[] {
+    return Object.values(this.zip.files)
+      .filter((f) => !f.dir)
+      .map((f) => f.name);
+  }
+
+  // --- Writing -------------------------------------------------------------------------------
+  // Edits mutate the cached DOM of a part; only those parts are re-serialized on save, so every
+  // other part keeps its original compressed bytes.
+
+  /** The DOM of a part, marked as modified. Mutate it only after awaiting this call. */
+  async edit(partPath: string): Promise<Document> {
+    await this.record(partPath);
+    const doc = await this.xml(partPath);
+    if (!doc) throw new PackageError(`Missing part ${partPath}.`);
+    this.dirty.add(partPath);
+    if (partPath.endsWith('.rels')) this.relsCache.clear();
+    return doc;
+  }
+
+  async setText(partPath: string, text: string): Promise<void> {
+    await this.record(partPath);
+    this.zip.file(partPath, text, { createFolders: false });
+    this.forget(partPath);
+  }
+
+  async remove(partPath: string): Promise<void> {
+    if (!this.has(partPath)) return;
+    await this.record(partPath);
+    this.zip.remove(partPath);
+    this.forget(partPath);
+  }
+
+  /** Starts recording the prior state of every part modified until `commit()`. */
+  begin(): void {
+    this.journal = new Map();
+  }
+
+  commit(): PartSnapshot {
+    const journal = this.journal ?? new Map();
+    this.journal = undefined;
+    return journal;
+  }
+
+  /** Puts parts back the way a snapshot recorded them. */
+  restore(snapshot: PartSnapshot): void {
+    for (const [partPath, content] of snapshot) {
+      if (content === null) this.zip.remove(partPath);
+      else this.zip.file(partPath, content, { createFolders: false });
+      this.forget(partPath);
+    }
+  }
+
+  async save(): Promise<Uint8Array> {
+    const serializer = new XMLSerializer();
+    for (const partPath of this.dirty) {
+      const doc = await this.xml(partPath);
+      if (doc) this.zip.file(partPath, serializer.serializeToString(doc), { createFolders: false });
+    }
+    this.dirty.clear();
+    return this.zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  }
+
+  private async record(partPath: string): Promise<void> {
+    if (!this.journal || this.journal.has(partPath)) return;
+    let prior: string | Uint8Array | null = null;
+    if (this.dirty.has(partPath)) {
+      const doc = await this.xml(partPath);
+      prior = doc ? new XMLSerializer().serializeToString(doc) : null;
+    } else if (this.has(partPath)) {
+      prior = (await this.bytes(partPath)) ?? null;
+    }
+    this.journal.set(partPath, prior);
+  }
+
+  private forget(partPath: string): void {
+    this.xmlCache.delete(partPath);
+    this.dirty.delete(partPath);
+    if (partPath.endsWith('.rels')) this.relsCache.clear();
+  }
+
   private async loadRels(partPath: string): Promise<Map<string, Relationship>> {
     const dir = dirname(partPath);
-    const base = partPath.slice(dir.length).replace(/^\//, '');
-    const relsPath = (dir ? `${dir}/` : '') + `_rels/${base}.rels`;
-    const doc = await this.xml(relsPath);
+    const doc = await this.xml(relsPathOf(partPath));
     const map = new Map<string, Relationship>();
     if (!doc?.documentElement) return map;
     for (const el of children(doc.documentElement, 'Relationship')) {
@@ -107,6 +193,13 @@ export class OoxmlPackage {
     }
     return map;
   }
+}
+
+/** "xl/workbook.xml" → "xl/_rels/workbook.xml.rels"; "" → "_rels/.rels". */
+export function relsPathOf(partPath: string): string {
+  const dir = dirname(partPath);
+  const base = partPath.slice(dir.length).replace(/^\//, '');
+  return (dir ? `${dir}/` : '') + `_rels/${base}.rels`;
 }
 
 export function dirname(partPath: string): string {

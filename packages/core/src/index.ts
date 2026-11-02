@@ -1,7 +1,9 @@
 export * from './backend';
 export * from './protocol';
-export { OoxmlPackage, PackageError } from './package';
-export { Workbook } from './xlsx/workbook';
+export { OoxmlPackage, PackageError, type PartSnapshot } from './package';
+export { EditError, Workbook, type AppliedEdit, type CellPatch, type EditChange } from './xlsx/workbook';
+export { WorkbookSession, type SessionEdit } from './xlsx/session';
+export { parseInput } from './xlsx/input';
 export { columnIndex, columnName, parseRange } from './xlsx/address';
 export { formatValue, formatGeneral, isDateFormat, serialToDate } from './xlsx/numfmt';
 export type * from './xlsx/types';
