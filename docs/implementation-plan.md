@@ -115,12 +115,28 @@ test-fixtures/ # 各形式のサンプルファイル（ラウンドトリップ
 
 | Phase | 内容 | 完了条件 |
 |---|---|---|
-| 0 | 雛形（workspaces / esbuild / CI / テスト基盤 / fixtures） | 空の CustomEditor で 3 形式が開ける |
-| 1 | 閲覧（Word: docx-preview、Excel: グリッド、PPT: 基本レンダラ） | 代表的 fixture が実用的に表示できる |
+| 1 | **3 形式の閲覧**（雛形構築を含む） | `.docx` / `.xlsx` / `.pptx` をダブルクリックで開き、内容を表示できる |
 | 2 | Excel 編集（セル・行列・シート）+ Undo/保存 | 編集後に Excel で開いて破損なし、未変更パートがバイト一致 |
 | 3 | Word / PPT のテキスト編集 | 同上 |
 | 4 | テキスト抽出・Git 差分・LM Tools | エージェントから読み書きできる |
 | 5 | 任意アダプタ（LibreOffice 変換、Windows の Office COM） | 設定で有効化した場合のみ動作 |
+
+### Phase 1 の詳細（閲覧専用）
+
+まず「3 形式すべてが VS Code 上で見られる」状態を最短で作る。編集機能は入れず、`CustomReadonlyEditorProvider` で実装する（Phase 2 で `CustomEditorProvider` に置き換える）。
+
+| 項目 | 内容 |
+|---|---|
+| 雛形 | npm workspaces（`core` / `extension` / `webview`）、esbuild、ESLint、Vitest、GitHub Actions |
+| 共通 | 3 形式の CustomEditor 登録、Webview の CSP、VS Code テーマ追従、読み込み中・エラー表示、ファイル変更時の再読込 |
+| Word | docx-preview でページ表示。ズーム、ページ送り |
+| Excel | 自前パーサ + 仮想スクロールのグリッド。シートタブ切替、値と基本書式（数値書式・太字・背景色・列幅・結合セル）、行列見出しの固定 |
+| PowerPoint | 自前レンダラでテキスト・図形（矩形/楕円等の基本形状）・画像・表を SVG/HTML 化。サムネイル一覧 + 選択スライド表示 |
+| テスト | 各形式の fixture を数種用意し、core のパース結果をスナップショットで検証 |
+
+**Phase 1 で割り切ること**: グラフ・SmartArt・数式（Word の数式エディタ）・アニメーション・条件付き書式は「未対応の要素」としてプレースホルダ表示。Excel の数式はファイル内のキャッシュ値を表示する。
+
+**完了条件**: 代表的な fixture（各形式 3〜5 個）が崩れずに読める程度に表示でき、10 万セル規模の xlsx でもスクロールが実用的に動くこと。
 
 ## 9. 決めておきたい論点
 1. **想定利用者と優先形式**: Excel 優先で良いか（編集の需要・実装コスト比が最も高いため推奨）。
