@@ -1,5 +1,6 @@
 // A minimal context menu styled after VS Code's, positioned at the pointer.
-import { el } from '../common/host';
+import { el } from './host';
+import './popup.css';
 
 export interface MenuItem {
   label: string;

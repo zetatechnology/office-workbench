@@ -160,3 +160,32 @@
   color: #666;
   font: 14px "Segoe UI", sans-serif;
 }
+
+/* Text editing */
+
+.stage.editable .slide [data-shape-id]:hover {
+  outline: calc(1px / var(--scale, 1)) dashed var(--ow-accent);
+}
+
+.slide .editing-frame,
+.stage.editable .slide .editing-frame:hover {
+  z-index: 1;
+  outline: calc(2px / var(--scale, 1)) solid var(--ow-accent);
+}
+
+.slide .editing {
+  outline: none;
+  cursor: text;
+}
+
+.slide td.editing {
+  box-shadow: inset 0 0 0 calc(2px / var(--scale, 1)) var(--ow-accent);
+}
+
+.thumb.drop-before .thumb-frame {
+  box-shadow: 0 calc(-4px) 0 0 var(--ow-accent);
+}
+
+.thumb.drop-after .thumb-frame {
+  box-shadow: 0 4px 0 0 var(--ow-accent);
+}

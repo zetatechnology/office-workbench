@@ -45,6 +45,13 @@ export class OoxmlPackage {
     );
     if (declared > MAX_UNCOMPRESSED_BYTES) throw new PackageError('The file is too large to open.');
     if (!zip.file('[Content_Types].xml')) throw new PackageError('Missing [Content_Types].xml; not an OOXML file.');
+    // JSZip recompresses every entry whose method differs from the one passed to generateAsync,
+    // so entries stored uncompressed (Word stores images this way) are pinned to STORE to keep
+    // their original bytes.
+    for (const f of files) {
+      const internal = f as unknown as { _data?: { compression?: { magic?: string } }; options: { compression?: string } };
+      if (internal._data?.compression?.magic === '\x00\x00') internal.options.compression = 'STORE';
+    }
     return new OoxmlPackage(zip);
   }
 
@@ -52,7 +59,12 @@ export class OoxmlPackage {
     return this.zip.file(partPath) !== null;
   }
 
+  /** The part as text, including unsaved edits to its DOM. */
   async text(partPath: string): Promise<string | undefined> {
+    if (this.dirty.has(partPath)) {
+      const doc = await this.xml(partPath);
+      return doc ? new XMLSerializer().serializeToString(doc) : undefined;
+    }
     return this.zip.file(partPath)?.async('string');
   }
 
@@ -239,4 +251,19 @@ export function imageContentType(partPath: string): string | undefined {
 /** Image formats a browser can display directly. */
 export function isBrowserImage(contentType: string | undefined): boolean {
   return !!contentType && !/x-emf|x-wmf|tiff/.test(contentType);
+}
+
+/** "ppt/slides/_rels/slide1.xml.rels" → "ppt/slides/slide1.xml"; "_rels/.rels" → "". */
+export function relsSourceOf(relsPath: string): string | undefined {
+  const match = /^(.*?)_rels\/([^/]*)\.rels$/.exec(relsPath);
+  return match ? match[1] + match[2] : undefined;
+}
+
+/** A relationship target for `toPart`, relative to the directory of `fromPart`. */
+export function relativeTarget(fromPart: string, toPart: string): string {
+  const from = dirname(fromPart).split('/').filter(Boolean);
+  const to = toPart.split('/');
+  let common = 0;
+  while (common < from.length && common < to.length - 1 && from[common] === to[common]) common++;
+  return [...Array<string>(from.length - common).fill('..'), ...to.slice(common)].join('/');
 }

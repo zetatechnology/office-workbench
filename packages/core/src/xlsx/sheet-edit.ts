@@ -1,7 +1,7 @@
 // In-place edits of a worksheet DOM. Elements are changed individually so that everything the
 // editor does not understand (extLst, x14 extensions, unknown attributes) is preserved.
 import type { Document, Element } from '../xml';
-import { attr, child, children, descendants, text } from '../xml';
+import { attr, child, children, createLike, descendants, text } from '../xml';
 import { columnIndex, columnName, parseRange, rowIndex } from './address';
 import type { ParsedInput } from './input';
 import { MAX_COLS, MAX_ROWS, shiftFormula, shiftInterval, shiftSqref, translateFormula, type Shift } from './refs';
@@ -13,10 +13,7 @@ export function cellRef(r: number, c: number): string {
   return `${columnName(c)}${r + 1}`;
 }
 
-/** Creates an element in the same namespace (and with the same prefix) as `like`. */
-export function createLike(doc: Document, like: Element, localName: string): Element {
-  return doc.createElementNS(like.namespaceURI, like.prefix ? `${like.prefix}:${localName}` : localName);
-}
+export { createLike };
 
 /** Inserts `node` as a child of `parent` before the first child named in `before`, or at the end. */
 export function insertBefore(parent: Element, node: Element, before: string[]): void {

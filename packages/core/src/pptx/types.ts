@@ -56,7 +56,10 @@ export interface ShapeElement {
   closed: boolean;
   fill: Fill;
   line?: Line;
+  /** Present when the shape has visible text, and always for shapes whose text can be edited. */
   text?: TextBody;
+  /** `cNvPr@id` of a shape on the slide itself whose text can be edited (not layout/master shapes). */
+  textId?: string;
 }
 
 export interface PictureElement {
@@ -72,6 +75,8 @@ export interface PictureElement {
 export interface TableElement {
   type: 'table';
   box: Box;
+  /** `cNvPr@id` of the table's frame when its cells can be edited. */
+  textId?: string;
   columns: number[];
   rows: TableRow[];
 }
@@ -137,3 +142,14 @@ export interface Run {
   /** A line break (`<a:br/>`) instead of text. */
   br?: boolean;
 }
+
+/**
+ * Edits of a presentation; each one is a single undo step. Shapes are identified by their
+ * `cNvPr@id` on the slide. A paragraph's "\n" (or "\v") is a line break within the paragraph.
+ */
+export type PptxEditOp =
+  | { type: 'setShapeText'; slide: number; shape: string; paragraphs: string[] }
+  | { type: 'setTableCellText'; slide: number; shape: string; row: number; col: number; paragraphs: string[] }
+  | { type: 'duplicateSlide'; slide: number }
+  | { type: 'deleteSlide'; slide: number }
+  | { type: 'moveSlide'; slide: number; to: number };

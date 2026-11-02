@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ViewerBackend, type HostMessage, type ViewerKind, type WebviewMessage } from '@office-workbench/core';
 import { getWebviewHtml } from './html';
 
-/** Read-only custom editor for one Office file type (Phase 1: viewing only). */
+/** Read-only custom editor (PDF; the Office formats and CSV use OfficeEditorProvider). */
 export class OfficeViewerProvider implements vscode.CustomReadonlyEditorProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,

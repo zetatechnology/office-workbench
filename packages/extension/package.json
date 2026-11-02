@@ -1,7 +1,7 @@
 {
   "name": "office-workbench",
   "displayName": "Office Workbench",
-  "description": "View Word, Excel, PowerPoint and PDF files inside VS Code, and edit Excel and CSV files.",
+  "description": "View Word, Excel, PowerPoint and PDF files inside VS Code, and edit Word, Excel, PowerPoint and CSV files.",
   "version": "0.0.1",
   "publisher": "office-workbench",
   "private": true,
@@ -180,7 +180,7 @@
         "toolReferenceName": "readOffice",
         "displayName": "Read Office file",
         "userDescription": "Read a Word, Excel, PowerPoint or CSV file as Markdown.",
-        "modelDescription": "Reads a Word (.docx/.docm), Excel (.xlsx/.xlsm), PowerPoint (.pptx/.pptm), CSV or TSV file and returns its content as text. Word: Markdown with headings, lists and tables. Excel: one Markdown table per sheet with displayed values (first column = row number, header = column letters; only rows with values are listed), followed by the sheet's formulas (cells filled down with the same formula are grouped, e.g. \"E4:E7: =C4*D4\") and merged ranges. PowerPoint: text, bullet lists and tables per slide, plus speaker notes. CSV/TSV: the raw text. If the file is open in the editor, unsaved changes are included. For large workbooks, pass `sheet` and/or `range` to read part of it.",
+        "modelDescription": "Reads a Word (.docx/.docm), Excel (.xlsx/.xlsm), PowerPoint (.pptx/.pptm), CSV or TSV file and returns its content as text. Word: Markdown with headings, lists and tables. Excel: one Markdown table per sheet with displayed values (first column = row number, header = column letters; only rows with values are listed), followed by the sheet's formulas (cells filled down with the same formula are grouped, e.g. \"E4:E7: =C4*D4\") and merged ranges. PowerPoint: text, bullet lists and tables per slide, plus speaker notes. CSV/TSV: the raw text. If the file is open in the editor, unsaved changes are included. For large workbooks, pass `sheet` and/or `range` to read part of it. Before editing a Word document or PowerPoint presentation, read it with `outline: true` to get the paragraph numbers (Word) or slide numbers and shape ids (PowerPoint) that the editing tools use.",
         "canBeReferencedInPrompt": true,
         "icon": "$(file)",
         "tags": [
@@ -205,6 +205,10 @@
             "range": {
               "type": "string",
               "description": "Excel only: A1 range to read, e.g. \"A1:F50\" (default: whole sheet)."
+            },
+            "outline": {
+              "type": "boolean",
+              "description": "Word/PowerPoint only: return the numbered outline used by the editing tools (Word: every paragraph, including table cells, numbered in reading order; PowerPoint: each slide's editable shapes with their ids and table cells) instead of Markdown."
             },
             "maxCharacters": {
               "type": "number",
@@ -287,6 +291,172 @@
                   "name": {
                     "type": "string",
                     "description": "addSheet/renameSheet: sheet name."
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "save": {
+              "type": "boolean",
+              "description": "Save the file after editing (default false: leave the changes unsaved for review)."
+            }
+          },
+          "required": [
+            "filePath",
+            "edits"
+          ]
+        }
+      },
+      {
+        "name": "officeWorkbench_editDocument",
+        "toolReferenceName": "editDocument",
+        "displayName": "Edit Word document",
+        "userDescription": "Edit, insert, delete or replace text in paragraphs of a Word document.",
+        "modelDescription": "Edits the text of a Word document (.docx/.docm). Read the file first with the read tool and `outline: true`: it numbers every paragraph (body and table cells, in reading order) and marks paragraphs that cannot be edited (with fields, hyperlinks, pictures, tracked changes, comments, content controls). The file is opened in the Office Workbench editor and each edit becomes an undoable step; changes stay unsaved for the user to review unless `save` is true. Paragraph properties (style, list, alignment) are kept and the new text takes the formatting of the paragraph's first run; character formatting within the paragraph (bold words etc.) is replaced. In text, \"\\t\" is a tab and \"\\n\" a line break within the paragraph. Edit types: \"setParagraph\" with `paragraph` number and `text`; \"insertParagraph\" with `after` (paragraph number; the new paragraph copies its properties) and `text`; \"deleteParagraph\" with `paragraph`; \"replaceText\" with `find` and `replace` (applied within every editable paragraph containing `find`). Edits are applied in order and paragraph numbers refer to the document as it is when each edit is applied, so an insert or delete shifts the numbers of later paragraphs. If one edit fails, the earlier ones remain applied.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(edit)",
+        "tags": [
+          "office",
+          "word",
+          "document"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute path of the document, or a path relative to the workspace folder."
+            },
+            "edits": {
+              "type": "array",
+              "description": "Edits to apply in order.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "setParagraph",
+                      "insertParagraph",
+                      "deleteParagraph",
+                      "replaceText"
+                    ]
+                  },
+                  "paragraph": {
+                    "type": "number",
+                    "description": "setParagraph/deleteParagraph: paragraph number from the outline."
+                  },
+                  "after": {
+                    "type": "number",
+                    "description": "insertParagraph: number of the paragraph to insert after."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "setParagraph/insertParagraph: the paragraph's text."
+                  },
+                  "find": {
+                    "type": "string",
+                    "description": "replaceText: text to find."
+                  },
+                  "replace": {
+                    "type": "string",
+                    "description": "replaceText: replacement text."
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "save": {
+              "type": "boolean",
+              "description": "Save the file after editing (default false: leave the changes unsaved for review)."
+            }
+          },
+          "required": [
+            "filePath",
+            "edits"
+          ]
+        }
+      },
+      {
+        "name": "officeWorkbench_editPresentation",
+        "toolReferenceName": "editPresentation",
+        "displayName": "Edit PowerPoint presentation",
+        "userDescription": "Edit text in shapes and tables, or duplicate, delete and reorder slides of a PowerPoint presentation.",
+        "modelDescription": "Edits a PowerPoint presentation (.pptx/.pptm). Read the file first with the read tool and `outline: true`: it lists each slide's editable shapes by id with their paragraphs, and table cells by row and column. The file is opened in the Office Workbench editor and each edit becomes an undoable step; changes stay unsaved for the user to review unless `save` is true. Paragraph properties (bullets, levels, alignment) are kept and new text takes the formatting of the paragraph's first run; paragraphs whose text is unchanged are left as they are. Edit types: \"setText\" with `slide` (1-based), `shape` (id from the outline) and `paragraphs` (list of strings; \"\\n\" inside one is a line break) or `text` (split into paragraphs at line breaks) — replaces all text of the shape, including empty placeholders; \"setTableCell\" with `slide`, `shape`, 1-based `row` and `column`, and `paragraphs` or `text`; \"replaceText\" with `find`, `replace` and optional `slide` (in every editable shape and table cell); \"duplicateSlide\" / \"deleteSlide\" with `slide`; \"moveSlide\" with `slide` and new position `to`. Slide numbers refer to the presentation as it is when each edit is applied. If one edit fails, the earlier ones remain applied.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(edit)",
+        "tags": [
+          "office",
+          "powerpoint",
+          "presentation",
+          "slides"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute path of the presentation, or a path relative to the workspace folder."
+            },
+            "edits": {
+              "type": "array",
+              "description": "Edits to apply in order.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "setText",
+                      "setTableCell",
+                      "replaceText",
+                      "duplicateSlide",
+                      "deleteSlide",
+                      "moveSlide"
+                    ]
+                  },
+                  "slide": {
+                    "type": "number",
+                    "description": "1-based slide number."
+                  },
+                  "shape": {
+                    "type": "string",
+                    "description": "setText/setTableCell: shape id from the outline."
+                  },
+                  "paragraphs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "setText/setTableCell: the new paragraphs."
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "setText/setTableCell: the new text, one paragraph per line (alternative to paragraphs)."
+                  },
+                  "row": {
+                    "type": "number",
+                    "description": "setTableCell: 1-based row."
+                  },
+                  "column": {
+                    "type": "number",
+                    "description": "setTableCell: 1-based column."
+                  },
+                  "find": {
+                    "type": "string",
+                    "description": "replaceText: text to find."
+                  },
+                  "replace": {
+                    "type": "string",
+                    "description": "replaceText: replacement text."
+                  },
+                  "to": {
+                    "type": "number",
+                    "description": "moveSlide: new 1-based position."
                   }
                 },
                 "required": [

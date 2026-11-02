@@ -58,7 +58,25 @@ interface Inherited {
 }
 
 export async function parsePresentation(data: Uint8Array): Promise<ParsedPresentation> {
-  const pkg = await OoxmlPackage.open(data);
+  return readPresentation(await OoxmlPackage.open(data));
+}
+
+/** Slide parts in presentation order, with their `<p:sldId>` entries. */
+export async function slideParts(pkg: OoxmlPackage, presPath: string): Promise<{ sldId: Element; rId: string; path: string }[]> {
+  const root = (await pkg.xml(presPath))?.documentElement;
+  const rels = await pkg.rels(presPath);
+  return children(child(root, 'sldIdLst'), 'sldId').flatMap((sldId) => {
+    const rId = relAttr(sldId, 'id') ?? '';
+    const rel = rels.get(rId);
+    return rel && !rel.external ? [{ sldId, rId, path: rel.target }] : [];
+  });
+}
+
+/**
+ * Reads the presentation as it is in the package now (including unsaved edits). Without
+ * `withMedia`, image bytes are not read (the media list is still complete).
+ */
+export async function readPresentation(pkg: OoxmlPackage, withMedia = true): Promise<ParsedPresentation> {
   const presPath = await pkg.mainPart();
   const root = (await pkg.xml(presPath))?.documentElement;
   if (!root || root.localName !== 'presentation') throw new Error('This file is not a PowerPoint presentation.');
@@ -73,15 +91,12 @@ export async function parsePresentation(data: Uint8Array): Promise<ParsedPresent
 
   const media = new Map<string, MediaRef>();
   const slides: Slide[] = [];
-  const slideIds = children(child(root, 'sldIdLst'), 'sldId');
-  for (const sldId of slideIds) {
-    const rel = rels.get(relAttr(sldId, 'id') ?? '');
-    if (!rel) continue;
-    slides.push(await parseSlide(pkg, rel.target, slides.length, { defaultTextStyle, tableStyles, media }));
+  for (const { path: slidePath } of await slideParts(pkg, presPath)) {
+    slides.push(await parseSlide(pkg, slidePath, slides.length, { defaultTextStyle, tableStyles, media }));
   }
 
   const bytes = new Map<string, Uint8Array>();
-  for (const ref of media.values()) {
+  for (const ref of withMedia ? media.values() : []) {
     const b = await pkg.bytes(ref.path);
     if (b) bytes.set(ref.path, b);
   }
@@ -133,10 +148,10 @@ async function parseSlide(
   const elements: SlideElement[] = [];
   const showMasterShapes = boolAttr(slide.root, 'showMasterSp', true);
   if (showMasterShapes && master && boolAttr(layout?.root, 'showMasterSp', true)) {
-    walkTree(ctx, master, children(path(master.root, 'cSld', 'spTree')), IDENTITY, elements, true);
+    walkTree(ctx, master, children(path(master.root, 'cSld', 'spTree')), IDENTITY, elements, true, false);
   }
-  if (showMasterShapes && layout) walkTree(ctx, layout, children(path(layout.root, 'cSld', 'spTree')), IDENTITY, elements, true);
-  walkTree(ctx, slide, children(path(slide.root, 'cSld', 'spTree')), IDENTITY, elements, false);
+  if (showMasterShapes && layout) walkTree(ctx, layout, children(path(layout.root, 'cSld', 'spTree')), IDENTITY, elements, true, false);
+  walkTree(ctx, slide, children(path(slide.root, 'cSld', 'spTree')), IDENTITY, elements, false, true);
 
   return {
     index,
@@ -172,19 +187,22 @@ function walkTree(
   transform: Transform,
   out: SlideElement[],
   skipPlaceholders: boolean,
+  /** Shapes of the slide itself, outside alternate content: their text can be edited. */
+  editable: boolean,
 ): void {
   for (const node of elements) {
     if (node.localName === 'AlternateContent') {
-      // Prefer the fallback representation, which uses only baseline features.
+      // Prefer the fallback representation, which uses only baseline features. Editing it would
+      // leave the other branch stale, so its shapes are not editable.
       const branch = child(node, 'Fallback') ?? child(node, 'Choice');
-      walkTree(ctx, part, children(branch), transform, out, skipPlaceholders);
+      walkTree(ctx, part, children(branch), transform, out, skipPlaceholders, false);
       continue;
     }
     if (skipPlaceholders && placeholderOf(node)) continue;
     switch (node.localName) {
       case 'sp':
       case 'cxnSp': {
-        const shape = parseShape(ctx, part, node, transform);
+        const shape = parseShape(ctx, part, node, transform, editable);
         if (shape) out.push(shape);
         break;
       }
@@ -195,6 +213,7 @@ function walkTree(
       }
       case 'graphicFrame': {
         const frame = parseGraphicFrame(ctx, part, node, transform);
+        if (frame?.type === 'table' && editable) frame.textId = attr(path(node, 'nvGraphicFramePr', 'cNvPr'), 'id');
         if (frame) out.push(frame);
         break;
       }
@@ -218,7 +237,7 @@ function walkTree(
           tx: transform.sx * local.tx + transform.tx,
           ty: transform.sy * local.ty + transform.ty,
         };
-        walkTree(ctx, part, children(node), composed, out, skipPlaceholders);
+        walkTree(ctx, part, children(node), composed, out, skipPlaceholders, editable);
         break;
       }
     }
@@ -285,7 +304,10 @@ function shapeProps(el: Element): Element | undefined {
   return child(el, 'spPr') ?? child(el, 'grpSpPr');
 }
 
-function parseShape(ctx: SlideContext, part: PartContext, el: Element, transform: Transform): ShapeElement | undefined {
+/** Placeholders for pictures, charts, tables and the like, which hold no text. */
+export const NON_TEXT_PLACEHOLDERS = new Set(['pic', 'chart', 'tbl', 'clipArt', 'dgm', 'media', 'sldImg']);
+
+function parseShape(ctx: SlideContext, part: PartContext, el: Element, transform: Transform, editable: boolean): ShapeElement | undefined {
   const inherited = inheritance(ctx, part, el);
   const spPrChain = [shapeProps(el), ...inherited.sources.map(shapeProps)];
   const xfrm = spPrChain.map((s) => child(s, 'xfrm')).find((x) => x && child(x, 'off'));
@@ -313,17 +335,21 @@ function parseShape(ctx: SlideContext, part: PartContext, el: Element, transform
   const line = readLine(ctx, lineEl, style);
 
   const txBody = child(el, 'txBody');
-  const textBody = txBody ? readTextBody(ctx, el, txBody, inherited, style) : undefined;
+  const phType = attr(placeholderOf(el), 'type');
+  const textId = editable && el.localName === 'sp' && !NON_TEXT_PLACEHOLDERS.has(phType ?? '') ? attr(path(el, 'nvSpPr', 'cNvPr'), 'id') : undefined;
+  const textBody = txBody || textId ? readTextBody(ctx, el, txBody, inherited, style) : undefined;
   const isLine = el.localName === 'cxnSp' || geometry?.closed === false;
-  return {
+  const shape: ShapeElement = {
     type: 'shape',
     box,
     path: geometry?.d,
     closed: geometry?.closed ?? true,
     fill: isLine || !fill ? { type: 'none' } : fill,
     line,
-    text: textBody && textBody.paragraphs.some((p) => p.runs.some((r) => r.text || r.br)) ? textBody : undefined,
+    text: textBody && (textId || textBody.paragraphs.some((p) => p.runs.some((r) => r.text || r.br))) ? textBody : undefined,
   };
+  if (textId) shape.textId = textId;
+  return shape;
 }
 
 function parsePicture(ctx: SlideContext, part: PartContext, el: Element, transform: Transform): PictureElement | undefined {
@@ -648,7 +674,9 @@ function readTextBody(
   const defaultTextColor = '#' + (ctx.theme.colors[ctx.clrMap.tx1 ?? 'dk1'] ?? '000000');
   const counters = new Map<number, number>();
   const paragraphs: Paragraph[] = [];
-  for (const p of children(txBody, 'p')) {
+  // A body without paragraphs (or no body at all) reads as one empty paragraph, sized for new text.
+  const paragraphEls = children(txBody, 'p');
+  for (const p of paragraphEls.length ? paragraphEls : [undefined]) {
     const pPr = child(p, 'pPr');
     const level = numAttr(pPr, 'lvl') ?? 0;
     const levelProps = [pPr, ...listStyles.map((ls) => child(ls, `lvl${level + 1}pPr`))];

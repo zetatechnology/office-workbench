@@ -55,6 +55,7 @@ function flipTransform(box: Box): string | undefined {
 
 function renderShape(shape: ShapeElement, media: MediaUrls): HTMLElement {
   const node = positioned('shape', shape.box);
+  if (shape.textId) node.dataset.shapeId = shape.textId;
   const { w, h } = shape.box;
   const flip = flipTransform(shape.box);
 
@@ -152,6 +153,7 @@ function renderPicture(pic: PictureElement, media: MediaUrls): HTMLElement {
 
 function renderTable(table: TableElement, media: MediaUrls): HTMLElement {
   const node = positioned('table', table.box);
+  if (table.textId) node.dataset.shapeId = table.textId;
   node.style.height = 'auto';
   const t = el('table');
   const colgroup = el('colgroup');
@@ -162,12 +164,14 @@ function renderTable(table: TableElement, media: MediaUrls): HTMLElement {
   }
   t.append(colgroup);
   t.style.width = `${table.columns.reduce((a, b) => a + b, 0)}px`;
-  for (const row of table.rows) {
+  table.rows.forEach((row, rowIndex) => {
     const tr = el('tr');
     tr.style.height = `${row.height}px`;
-    for (const cell of row.cells) {
-      if (cell.merged) continue;
+    row.cells.forEach((cell, c) => {
+      if (cell.merged) return;
       const td = el('td');
+      td.dataset.row = String(rowIndex);
+      td.dataset.col = String(c);
       if (cell.colSpan > 1) td.colSpan = cell.colSpan;
       if (cell.rowSpan > 1) td.rowSpan = cell.rowSpan;
       applyFill(td, cell.fill, media);
@@ -181,9 +185,9 @@ function renderTable(table: TableElement, media: MediaUrls): HTMLElement {
       td.style.padding = `${top}px ${r}px ${b}px ${l}px`;
       td.append(...renderParagraphs(cell.text));
       tr.append(td);
-    }
+    });
     t.append(tr);
-  }
+  });
   node.append(t);
   return node;
 }

@@ -1,18 +1,18 @@
 import * as vscode from 'vscode';
-import { CsvSession, WorkbookSession, type ViewerKind } from '@office-workbench/core';
+import { CsvSession, PresentationSession, WordSession, WorkbookSession, type ViewerKind } from '@office-workbench/core';
+import { OfficeEditorProvider, OfficeDocuments } from './editor';
 import { OfficeViewerProvider } from './provider';
 import { registerLanguageModelTools, type OfficeWorkbenchApi } from './lm-tools';
-import { SheetDocuments, SheetEditorProvider } from './sheet-editor';
 import { registerTextDocuments } from './text-documents';
 
-/** Formats that are view-only so far; workbooks and CSV files have the editable sheet editor. */
-const VIEW_ONLY: ViewerKind[] = ['docx', 'pptx', 'pdf'];
+/** Formats that are view-only; the Office formats and CSV files have editable editors. */
+const VIEW_ONLY: ViewerKind[] = ['pdf'];
 const CSV_VIEW_TYPE = 'officeWorkbench.csv';
 
 export function activate(context: vscode.ExtensionContext): OfficeWorkbenchApi {
   registerTextDocuments(context);
-  const sheets = new SheetDocuments();
-  const api = registerLanguageModelTools(context, sheets);
+  const documents = new OfficeDocuments();
+  const api = registerLanguageModelTools(context, documents);
   // Webviews are rebuilt from the host on demand; avoid keeping large documents in hidden tabs.
   const options = { webviewOptions: { retainContextWhenHidden: false }, supportsMultipleEditorsPerDocument: true };
   for (const kind of VIEW_ONLY) {
@@ -23,13 +23,23 @@ export function activate(context: vscode.ExtensionContext): OfficeWorkbenchApi {
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       'officeWorkbench.xlsx',
-      new SheetEditorProvider(context, (fileName, data) => new WorkbookSession(fileName, data), sheets),
+      new OfficeEditorProvider(context, 'xlsx', (fileName, data) => new WorkbookSession(fileName, data), documents),
       options,
     ),
     // CSV files are often edited as text, so the table view is an option rather than the default.
     vscode.window.registerCustomEditorProvider(
       CSV_VIEW_TYPE,
-      new SheetEditorProvider(context, (fileName, data) => new CsvSession(fileName, data), sheets),
+      new OfficeEditorProvider(context, 'xlsx', (fileName, data) => new CsvSession(fileName, data), documents),
+      options,
+    ),
+    vscode.window.registerCustomEditorProvider(
+      'officeWorkbench.docx',
+      new OfficeEditorProvider(context, 'docx', (fileName, data) => new WordSession(fileName, data), documents),
+      options,
+    ),
+    vscode.window.registerCustomEditorProvider(
+      'officeWorkbench.pptx',
+      new OfficeEditorProvider(context, 'pptx', (fileName, data) => new PresentationSession(fileName, data), documents),
       options,
     ),
     vscode.commands.registerCommand('officeWorkbench.openAsTable', (uri?: vscode.Uri) => {

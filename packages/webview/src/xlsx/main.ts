@@ -2,7 +2,8 @@ import type { EditOp, SheetData, WorkbookInfo } from '@office-workbench/core';
 import { columnName } from '@office-workbench/core/address';
 import { el, getState, onHostMessage, patchState, send, showMessage } from '../common/host';
 import { MAX_COLS, MAX_ROWS, SheetGrid, type Range, type Selection } from './grid';
-import { showMenu, type MenuItem } from './menu';
+import { showMenu, type MenuItem } from '../common/menu';
+import { showToast } from '../common/toast';
 import '../common/base.css';
 import './xlsx.css';
 
@@ -35,8 +36,6 @@ const addTab = el('button', 'sheet-add', '+');
 addTab.title = 'New sheet';
 const notice = el('div', 'sheet-notice');
 footer.append(tabs, addTab, notice);
-const toast = el('div', 'toast');
-toast.hidden = true;
 
 onHostMessage((message) => {
   switch (message.type) {
@@ -60,7 +59,7 @@ onHostMessage((message) => {
       }
       addTab.hidden = !sheetsEditable;
       valueBox.readOnly = !editable;
-      if (!app.contains(gridHost)) app.replaceChildren(formulaBar, gridHost, footer, toast);
+      if (!app.contains(gridHost)) app.replaceChildren(formulaBar, gridHost, footer);
       renderTabs();
       openSheet(activeSheet, false);
       break;
@@ -238,14 +237,6 @@ valueBox.onkeydown = (e) => {
 };
 
 // --- Misc ------------------------------------------------------------------------------------
-
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function showToast(text: string): void {
-  toast.textContent = text;
-  toast.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toast.hidden = true), 5000);
-}
 
 function saveView(): void {
   if (!grid || activeSheet < 0) return;

@@ -1,27 +1,14 @@
 // One open workbook as seen by its views: answers view requests and turns edits into undoable
 // steps that report which messages to broadcast. Independent of the VS Code API.
 import type { HostMessage, WebviewMessage } from '../protocol';
+import type { EditSession, SessionEdit } from '../session';
 import { EditError, Workbook, type EditChange } from './workbook';
 import type { EditOp } from './types';
 
-export interface SessionEdit {
-  label: string;
-  /** Messages for every view of the workbook after the edit. */
-  messages: HostMessage[];
-  undo(): Promise<HostMessage[]>;
-  redo(): Promise<HostMessage[]>;
-}
+export type { SessionEdit };
 
 /** One open spreadsheet-like file (workbook or CSV) behind the grid views. */
-export interface SheetSession {
-  /** Requests from a view; edits go through `edit` instead. */
-  handle(message: WebviewMessage): Promise<HostMessage[]>;
-  /** Applies an edit. Throws EditError (with a message for the user) when it is refused. */
-  edit(op: EditOp): Promise<SessionEdit>;
-  save(): Promise<Uint8Array>;
-  /** Replaces the contents, e.g. after revert or a change on disk. */
-  reset(data: Uint8Array): void;
-}
+export type SheetSession = EditSession<EditOp>;
 
 export class WorkbookSession implements SheetSession {
   private workbook: Promise<Workbook>;

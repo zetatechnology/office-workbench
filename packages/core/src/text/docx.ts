@@ -12,10 +12,20 @@ interface StyleInfo {
   ilvl?: number;
 }
 
-interface Context {
+/** Styles and numbering, for telling headings and list items apart. */
+export interface DocxContext {
   styles: Map<string, StyleInfo>;
   /** numId → level → numFmt ("bullet", "decimal", ...). */
   numbering: Map<string, Map<number, string>>;
+}
+
+type Context = DocxContext;
+
+/** Reads the styles and numbering of the main document part. */
+export async function readContext(pkg: OoxmlPackage, mainPath: string): Promise<DocxContext> {
+  const rels = [...(await pkg.rels(mainPath)).values()];
+  const target = (type: string) => rels.find((r) => r.type === type && !r.external)?.target;
+  return { styles: await readStyles(pkg, target('styles')), numbering: await readNumbering(pkg, target('numbering')) };
 }
 
 export async function docxToMarkdown(data: Uint8Array): Promise<string> {
@@ -26,10 +36,7 @@ export async function docxToMarkdown(data: Uint8Array): Promise<string> {
   const rels = [...(await pkg.rels(mainPath)).values()];
   const target = (type: string) => rels.filter((r) => r.type === type && !r.external).map((r) => r.target);
 
-  const ctx: Context = {
-    styles: await readStyles(pkg, target('styles')[0]),
-    numbering: await readNumbering(pkg, target('numbering')[0]),
-  };
+  const ctx = await readContext(pkg, mainPath);
   const blocks = renderBlocks(children(body), ctx);
 
   // Headers and footers, once each (sections often repeat the same part).
@@ -92,28 +99,41 @@ function renderBlocks(elements: Element[], ctx: Context): string[] {
 
 /** Text of a paragraph, prefixed for headings; `list` is the list marker when it is a list item. */
 function renderParagraph(p: Element, ctx: Context): { text: string; list?: string } {
-  const pPr = child(p, 'pPr');
-  const styleId = attr(child(pPr, 'pStyle'), 'val');
-  const style = resolveStyle(ctx.styles, styleId);
   const text = paragraphText(p).replace(/\s+$/, '');
-
-  const outline = numAttr(child(pPr, 'outlineLvl'), 'val') ?? style.outlineLevel;
-  const heading = /^heading (\d)$/i.exec(style.name ?? '');
-  const level = heading ? Number(heading[1]) : outline !== undefined && outline < 9 ? outline + 1 : /^title$/i.test(style.name ?? '') ? 1 : 0;
-  if (level && text.trim()) return { text: `${'#'.repeat(Math.min(level, 6))} ${text.trim()}` };
-
-  const numPr = child(pPr, 'numPr');
-  const numId = attr(child(numPr, 'numId'), 'val') ?? style.numId;
-  const ilvl = numAttr(child(numPr, 'ilvl'), 'val') ?? style.ilvl ?? 0;
-  if (numId && numId !== '0' && text.trim()) {
-    const format = ctx.numbering.get(numId)?.get(ilvl) ?? 'bullet';
-    return { text: text.trim(), list: `${'  '.repeat(ilvl)}${format === 'bullet' || format === 'none' ? '-' : '1.'} ` };
+  const info = paragraphInfo(p, ctx);
+  if (info.heading && text.trim()) return { text: `${'#'.repeat(Math.min(info.heading, 6))} ${text.trim()}` };
+  if (info.list && text.trim()) {
+    return { text: text.trim(), list: `${'  '.repeat(info.list.level)}${info.list.ordered ? '1.' : '-'} ` };
   }
   return { text };
 }
 
+/** Style name, heading level (from the style name or outline level) and list membership of a paragraph. */
+export function paragraphInfo(
+  p: Element,
+  ctx: DocxContext,
+): { style?: string; heading?: number; list?: { ordered: boolean; level: number } } {
+  const pPr = child(p, 'pPr');
+  const styleId = attr(child(pPr, 'pStyle'), 'val');
+  const style = resolveStyle(ctx.styles, styleId);
+
+  const outline = numAttr(child(pPr, 'outlineLvl'), 'val') ?? style.outlineLevel;
+  const heading = /^heading (\d)$/i.exec(style.name ?? '');
+  const level = heading ? Number(heading[1]) : outline !== undefined && outline < 9 ? outline + 1 : /^title$/i.test(style.name ?? '') ? 1 : 0;
+  if (level) return { style: style.name, heading: level };
+
+  const numPr = child(pPr, 'numPr');
+  const numId = attr(child(numPr, 'numId'), 'val') ?? style.numId;
+  const ilvl = numAttr(child(numPr, 'ilvl'), 'val') ?? style.ilvl ?? 0;
+  if (numId && numId !== '0') {
+    const format = ctx.numbering.get(numId)?.get(ilvl) ?? 'bullet';
+    return { style: style.name, list: { ordered: !(format === 'bullet' || format === 'none'), level: ilvl } };
+  }
+  return { style: style.name };
+}
+
 /** Concatenated run text, skipping deleted revisions, drawings and field instructions. */
-function paragraphText(p: Element): string {
+export function paragraphText(p: Element): string {
   let out = '';
   const walk = (el: Element) => {
     for (const node of children(el)) {

@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
-import { EditError, EncodingError, MAX_FILE_BYTES, type EditOp, type HostMessage, type SheetSession, type WebviewMessage } from '@office-workbench/core';
+import {
+  EditError, EncodingError, MAX_FILE_BYTES, type AnyEditOp, type EditSession, type HostMessage, type ViewerKind, type WebviewMessage,
+} from '@office-workbench/core';
 import { getWebviewHtml } from './html';
 
-/** An open workbook or CSV file shared by all of its editor panels. */
-export class SheetDocument implements vscode.CustomDocument {
+/** An open editable file (workbook, CSV, document, presentation) shared by all of its editor panels. */
+export class OfficeDocument implements vscode.CustomDocument {
   readonly panels = new Set<vscode.WebviewPanel>();
   /** Edits applied since the last save or revert (undo counts down), to know if it is clean. */
   unsavedEdits = 0;
@@ -14,7 +16,7 @@ export class SheetDocument implements vscode.CustomDocument {
   constructor(
     readonly uri: vscode.Uri,
     readonly fileName: string,
-    readonly session: SheetSession,
+    readonly session: EditSession<AnyEditOp>,
     onDiskChange: () => void,
   ) {
     const folder = vscode.Uri.joinPath(uri, '..');
@@ -43,15 +45,15 @@ export class SheetDocument implements vscode.CustomDocument {
   }
 }
 
-/** Open sheet documents by URI, shared by the providers and the language model tools. */
-export class SheetDocuments {
-  private readonly documents = new Map<string, { document: SheetDocument; provider: SheetEditorProvider }>();
+/** Open documents by URI, shared by the providers and the language model tools. */
+export class OfficeDocuments {
+  private readonly documents = new Map<string, { document: OfficeDocument; provider: OfficeEditorProvider }>();
 
-  get(uri: vscode.Uri): { document: SheetDocument; provider: SheetEditorProvider } | undefined {
+  get(uri: vscode.Uri): { document: OfficeDocument; provider: OfficeEditorProvider } | undefined {
     return this.documents.get(uri.toString());
   }
 
-  add(document: SheetDocument, provider: SheetEditorProvider): void {
+  add(document: OfficeDocument, provider: OfficeEditorProvider): void {
     const key = document.uri.toString();
     this.documents.set(key, { document, provider });
     document.onDispose(() => {
@@ -60,23 +62,30 @@ export class SheetDocuments {
   }
 }
 
-/** Editable custom editor for Excel workbooks and CSV/TSV files, both shown in the sheet grid. */
-export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDocument> {
-  private readonly changes = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<SheetDocument>>();
+/**
+ * Editable custom editor: Excel workbooks and CSV/TSV files (sheet grid), Word documents and
+ * PowerPoint presentations. The session holds the document; panels send edits and show its state.
+ */
+export class OfficeEditorProvider implements vscode.CustomEditorProvider<OfficeDocument> {
+  private readonly changes = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<OfficeDocument>>();
   readonly onDidChangeCustomDocument = this.changes.event;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly createSession: (fileName: string, data: Uint8Array) => SheetSession,
-    private readonly registry: SheetDocuments,
+    /** The webview to show (the CSV editor uses the workbook grid). */
+    private readonly view: ViewerKind,
+    // Each provider's session accepts the edits of its own format; views send only those.
+    private readonly createSession: (fileName: string, data: Uint8Array) => EditSession<never>,
+    private readonly registry: OfficeDocuments,
   ) {}
 
-  async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<SheetDocument> {
+  async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<OfficeDocument> {
     // After a restart with unsaved changes, VS Code hands back the backup written by backupCustomDocument.
     const source = openContext.backupId ? vscode.Uri.parse(openContext.backupId) : uri;
     const data = await readBytes(source);
     const fileName = uri.path.slice(uri.path.lastIndexOf('/') + 1);
-    const document: SheetDocument = new SheetDocument(uri, fileName, this.createSession(fileName, data), () =>
+    const session = this.createSession(fileName, data) as EditSession<AnyEditOp>;
+    const document: OfficeDocument = new OfficeDocument(uri, fileName, session, () =>
       void this.onDiskChange(document),
     );
     if (openContext.backupId) document.unsavedEdits = 1;
@@ -84,10 +93,10 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     return document;
   }
 
-  resolveCustomEditor(document: SheetDocument, panel: vscode.WebviewPanel): void {
+  resolveCustomEditor(document: OfficeDocument, panel: vscode.WebviewPanel): void {
     const webviewRoot = vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview');
     panel.webview.options = { enableScripts: true, localResourceRoots: [webviewRoot] };
-    panel.webview.html = getWebviewHtml(panel.webview, webviewRoot, 'xlsx');
+    panel.webview.html = getWebviewHtml(panel.webview, webviewRoot, this.view);
     document.panels.add(panel);
 
     const post = (messages: HostMessage[]) => {
@@ -112,7 +121,7 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
    * Applies an edit as one undo step and updates every view of the document. Throws EditError when
    * the edit is refused.
    */
-  async applyEdit(document: SheetDocument, op: EditOp): Promise<void> {
+  async applyEdit(document: OfficeDocument, op: AnyEditOp): Promise<void> {
     const edit = await document.session.edit(op);
     document.unsavedEdits++;
     document.broadcast(edit.messages);
@@ -130,19 +139,19 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     });
   }
 
-  saveCustomDocument(document: SheetDocument): Promise<void> {
+  saveCustomDocument(document: OfficeDocument): Promise<void> {
     return this.write(document, document.uri);
   }
 
-  async saveCustomDocumentAs(document: SheetDocument, destination: vscode.Uri): Promise<void> {
+  async saveCustomDocumentAs(document: OfficeDocument, destination: vscode.Uri): Promise<void> {
     await this.write(document, destination);
   }
 
-  async revertCustomDocument(document: SheetDocument): Promise<void> {
+  async revertCustomDocument(document: OfficeDocument): Promise<void> {
     await this.reload(document);
   }
 
-  async backupCustomDocument(document: SheetDocument, context: vscode.CustomDocumentBackupContext): Promise<vscode.CustomDocumentBackup> {
+  async backupCustomDocument(document: OfficeDocument, context: vscode.CustomDocumentBackupContext): Promise<vscode.CustomDocumentBackup> {
     await vscode.workspace.fs.writeFile(context.destination, await document.session.save());
     return {
       id: context.destination.toString(),
@@ -150,7 +159,7 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     };
   }
 
-  private async write(document: SheetDocument, target: vscode.Uri): Promise<void> {
+  private async write(document: OfficeDocument, target: vscode.Uri): Promise<void> {
     let data: Uint8Array;
     try {
       data = await document.session.save();
@@ -166,14 +175,14 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     await vscode.workspace.fs.writeFile(target, data);
   }
 
-  private async reload(document: SheetDocument): Promise<void> {
+  private async reload(document: OfficeDocument): Promise<void> {
     document.session.reset(await readBytes(document.uri));
     document.unsavedEdits = 0;
     document.broadcast(await document.session.handle({ type: 'ready' }));
   }
 
-  /** Picks up changes made by other programs (Excel, git) unless there are unsaved edits here. */
-  private async onDiskChange(document: SheetDocument): Promise<void> {
+  /** Picks up changes made by other programs (Office, git) unless there are unsaved edits here. */
+  private async onDiskChange(document: OfficeDocument): Promise<void> {
     if (Date.now() < document.ignoreChangesUntil || document.unsavedEdits !== 0) return;
     try {
       await this.reload(document);

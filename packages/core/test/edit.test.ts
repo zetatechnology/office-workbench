@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { parseInput, parseRange, Workbook, WorkbookSession, type CellData, type SheetData } from '../src';
+import { part, rawEntries } from './helpers';
 import { formatRef, renameSheetInFormula, shiftFormula, transformRefs, translateFormula } from '../src/xlsx/refs';
 
 const fixture = () => new Uint8Array(readFileSync(new URL('../../../test-fixtures/sample.xlsx', import.meta.url)));
@@ -12,23 +13,6 @@ function cellAt(sheet: SheetData, address: string): CellData | undefined {
 }
 
 const at = (address: string) => ({ r: parseRange(address)!.r1, c: parseRange(address)!.c1 });
-
-/** Raw compressed bytes of every ZIP entry, to check that untouched parts are byte-identical. */
-function rawEntries(data: Uint8Array): Map<string, string> {
-  const b = Buffer.from(data);
-  const entries = new Map<string, string>();
-  for (let i = 0; b.readUInt32LE(i) === 0x04034b50; ) {
-    const size = b.readUInt32LE(i + 18), nameLen = b.readUInt16LE(i + 26), extraLen = b.readUInt16LE(i + 28);
-    const start = i + 30 + nameLen + extraLen;
-    entries.set(b.toString('utf8', i + 30, i + 30 + nameLen), b.subarray(start, start + size).toString('base64'));
-    i = start + size;
-  }
-  return entries;
-}
-
-async function part(data: Uint8Array, name: string): Promise<string | undefined> {
-  return (await JSZip.loadAsync(data)).file(name)?.async('string');
-}
 
 describe('formula references', () => {
   it('finds references outside strings, names and functions', () => {

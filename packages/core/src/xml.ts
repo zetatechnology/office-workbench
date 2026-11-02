@@ -96,3 +96,8 @@ export function toggle(el: Element | undefined): boolean | undefined {
 export function text(el: Element | null | undefined): string {
   return el?.textContent ?? '';
 }
+
+/** Creates an element in the same namespace (and with the same prefix) as `like`. */
+export function createLike(doc: Document, like: Element, localName: string): Element {
+  return doc.createElementNS(like.namespaceURI, like.prefix ? `${like.prefix}:${localName}` : localName);
+}
