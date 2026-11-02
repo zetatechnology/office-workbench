@@ -1,7 +1,9 @@
 // Office documents as Markdown text, for reading in a text editor and for line-based diffs.
 import { docxToMarkdown } from './docx';
 import { pptxToMarkdown } from './pptx';
-import { xlsxToMarkdown } from './xlsx';
+import { xlsxToMarkdown, type SheetSelection } from './xlsx';
+
+export type { SheetSelection };
 
 export type TextKind = 'docx' | 'xlsx' | 'pptx';
 
@@ -14,12 +16,13 @@ export function textKindOf(fileName: string): TextKind | undefined {
   return undefined;
 }
 
-export function toMarkdown(kind: TextKind, data: Uint8Array): Promise<string> {
+/** `selection` narrows workbooks to one sheet and/or range; other kinds ignore it. */
+export function toMarkdown(kind: TextKind, data: Uint8Array, selection?: SheetSelection): Promise<string> {
   switch (kind) {
     case 'docx':
       return docxToMarkdown(data);
     case 'xlsx':
-      return xlsxToMarkdown(data);
+      return xlsxToMarkdown(data, selection);
     case 'pptx':
       return pptxToMarkdown(data);
   }

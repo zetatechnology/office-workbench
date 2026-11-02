@@ -52,6 +52,17 @@ Word / Excel / PowerPoint ファイルを Markdown テキストとして表示�
 - **Excel**: シートごとの表（表示値、1 列目は行番号。値のある行だけ）と数式一覧（下方向にコピーされた数式は `E4:E7` のように範囲でまとめる）、結合セル。非表示シートも含む
 - **PowerPoint**: スライドごとのテキスト・箇条書き・表、ノート、非表示スライドの印
 
+### AI（言語モデル）ツール（Phase 4）
+
+Copilot のエージェントモードなど、VS Code のチャットから使えるツールを提供します（VS Code 1.95 以降）。チャットで `#readOffice` / `#editSpreadsheet` と指定することもできます。
+
+| ツール | 内容 |
+|---|---|
+| `officeWorkbench_readFile`（Read Office file） | Word / Excel / PowerPoint / CSV を Markdown で読む。Excel はシート名・範囲（`A1:F50`）を指定可能。エディタで開いていれば未保存の変更も含む |
+| `officeWorkbench_editSpreadsheet`（Edit spreadsheet） | Excel / CSV のセル入力・クリア、行列の挿入削除、シートの追加・名前変更・削除。実行前に確認が表示される |
+
+編集はファイルを表のエディタで開き、手で編集したときと同じ仕組みで適用します。各操作は Ctrl+Z で元に戻せ、`save: true` を指定しない限りファイルは保存されません（エディタ上で確認してから保存）。同じ機能は拡張機能の API（`activate()` の戻り値の `readFile` / `editSpreadsheet`）としても使えます。
+
 ## 開発
 
 ```bash

@@ -12,4 +12,5 @@ export { formatValue, formatGeneral, isDateFormat, serialToDate } from './xlsx/n
 export type * from './xlsx/types';
 export { parsePresentation } from './pptx/presentation';
 export type * from './pptx/types';
-export { textKindOf, toMarkdown, type TextKind } from './text';
+export { textKindOf, toMarkdown, type SheetSelection, type TextKind } from './text';
+export { describeEdit, toEditOp, type ToolEdit } from './xlsx/tool-ops';

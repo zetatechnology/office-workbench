@@ -7,7 +7,7 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.95.0"
   },
   "categories": [
     "Visualization",
@@ -173,12 +173,144 @@
           "group": "navigation@20"
         }
       ]
-    }
+    },
+    "languageModelTools": [
+      {
+        "name": "officeWorkbench_readFile",
+        "toolReferenceName": "readOffice",
+        "displayName": "Read Office file",
+        "userDescription": "Read a Word, Excel, PowerPoint or CSV file as Markdown.",
+        "modelDescription": "Reads a Word (.docx/.docm), Excel (.xlsx/.xlsm), PowerPoint (.pptx/.pptm), CSV or TSV file and returns its content as text. Word: Markdown with headings, lists and tables. Excel: one Markdown table per sheet with displayed values (first column = row number, header = column letters; only rows with values are listed), followed by the sheet's formulas (cells filled down with the same formula are grouped, e.g. \"E4:E7: =C4*D4\") and merged ranges. PowerPoint: text, bullet lists and tables per slide, plus speaker notes. CSV/TSV: the raw text. If the file is open in the editor, unsaved changes are included. For large workbooks, pass `sheet` and/or `range` to read part of it.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(file)",
+        "tags": [
+          "office",
+          "excel",
+          "word",
+          "powerpoint",
+          "csv",
+          "spreadsheet"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute path of the file, or a path relative to the workspace folder."
+            },
+            "sheet": {
+              "type": "string",
+              "description": "Excel only: name of the sheet to read (default: all sheets)."
+            },
+            "range": {
+              "type": "string",
+              "description": "Excel only: A1 range to read, e.g. \"A1:F50\" (default: whole sheet)."
+            },
+            "maxCharacters": {
+              "type": "number",
+              "description": "Maximum length of the returned text (default 40000)."
+            }
+          },
+          "required": [
+            "filePath"
+          ]
+        }
+      },
+      {
+        "name": "officeWorkbench_editSpreadsheet",
+        "toolReferenceName": "editSpreadsheet",
+        "displayName": "Edit spreadsheet",
+        "userDescription": "Edit cells, rows, columns and sheets of an Excel workbook or CSV file.",
+        "modelDescription": "Edits an Excel workbook (.xlsx/.xlsm) or a CSV/TSV file. The file is opened in the Office Workbench spreadsheet editor and each edit becomes an undoable step; changes stay unsaved for the user to review unless `save` is true. Other parts of the workbook (charts, images, macros, styles) are preserved. Edits are applied in order; if one fails, the earlier ones remain applied. Edit types: \"setCells\" with `cells` mapping A1 addresses to input text exactly as a user would type it (numbers like \"1234.5\", dates like \"2026/1/15\", percentages like \"12.5%\", TRUE/FALSE, formulas starting with \"=\", a leading apostrophe for literal text, \"\" to clear) — formulas are not calculated by the editor, Excel calculates them when the file is opened; in CSV files every value is stored as plain text. \"clearRange\" with `range` (e.g. \"B2:D10\"). \"insertRows\"/\"deleteRows\" with 1-based `row` and optional `count` (inserted rows go above `row`). \"insertColumns\"/\"deleteColumns\" with column letter `column` and optional `count`. Formulas, merged cells and chart ranges are adjusted for inserted/deleted rows and columns. Workbooks only: \"addSheet\" with optional `name`, \"renameSheet\" with `sheet` and new `name`, \"deleteSheet\" with `sheet`. `sheet` is the sheet name; when omitted, the first visible sheet is used. Read the file first with the read tool to find the right cells.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(edit)",
+        "tags": [
+          "office",
+          "excel",
+          "csv",
+          "spreadsheet"
+        ],
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute path of the workbook or CSV file, or a path relative to the workspace folder."
+            },
+            "edits": {
+              "type": "array",
+              "description": "Edits to apply in order.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "setCells",
+                      "clearRange",
+                      "insertRows",
+                      "deleteRows",
+                      "insertColumns",
+                      "deleteColumns",
+                      "addSheet",
+                      "renameSheet",
+                      "deleteSheet"
+                    ]
+                  },
+                  "sheet": {
+                    "type": "string",
+                    "description": "Sheet name (default: first visible sheet)."
+                  },
+                  "cells": {
+                    "type": "object",
+                    "description": "setCells: map of A1 address to input text, e.g. {\"B3\": \"42\", \"C3\": \"=B3*2\"}.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "range": {
+                    "type": "string",
+                    "description": "clearRange: A1 range, e.g. \"A2:C10\"."
+                  },
+                  "row": {
+                    "type": "number",
+                    "description": "insertRows/deleteRows: 1-based row number."
+                  },
+                  "column": {
+                    "type": "string",
+                    "description": "insertColumns/deleteColumns: column letter, e.g. \"C\"."
+                  },
+                  "count": {
+                    "type": "number",
+                    "description": "Number of rows/columns (default 1)."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "addSheet/renameSheet: sheet name."
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "save": {
+              "type": "boolean",
+              "description": "Save the file after editing (default false: leave the changes unsaved for review)."
+            }
+          },
+          "required": [
+            "filePath",
+            "edits"
+          ]
+        }
+      }
+    ]
   },
   "dependencies": {
     "@office-workbench/core": "*"
   },
   "devDependencies": {
-    "@types/vscode": "~1.90.0"
+    "@types/vscode": "~1.95.0"
   }
 }

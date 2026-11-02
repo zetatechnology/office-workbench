@@ -174,7 +174,15 @@ test-fixtures/ # 各形式のサンプルファイル（ラウンドトリップ
 | 差分に強い出力 | Excel の表は値のある行だけを行番号付きで出し、行末の空セルを省く（列が増えても変わるのは見出しと該当行だけ） |
 | VS Code 統合 | 仮想ドキュメント `office-text:<path>.md?<元 URI>`（読み取り専用、元ファイルの変更で更新）。差分は組み込み Git 拡張の API（`toGitUri(uri, 'HEAD')`）で HEAD 版を読み、`vscode.diff` で Markdown 同士を比較。エディタタイトル、エクスプローラー、ソース管理ビューの右クリックから実行 |
 
-**後半（未着手）: Language Model Tools**: 読み取り（シート範囲・段落・スライドのテキスト）と Excel 編集（既存の `EditOp` を通し、Undo・保存も同じ経路）を `vscode.lm.registerTool` で公開する。
+**後半（実装済み）: Language Model Tools**
+
+| 項目 | 内容 |
+|---|---|
+| `officeWorkbench_readFile` | 前半の Markdown 変換を返す。Excel はシート・範囲指定、出力長の上限（既定 4 万文字、超過時は範囲指定を促す）。開いているエディタがあればその現在の状態（未保存の変更を含む）を読む |
+| `officeWorkbench_editSpreadsheet` | モデル向けの表現（A1 アドレス、シート名、1 始まりの行番号、列の文字）を core の `toEditOp` で `EditOp` に変換し、エディタと同じ `applyEdit` で 1 操作ずつ Undo 可能な編集として適用。開いていなければ表のエディタを背面で開く。途中で失敗したら、そこまでの結果と理由（例: 存在するシート名の一覧）を返す。`prepareInvocation` で確認を出し、`save` 指定時のみ保存 |
+| API | 同じ処理を `activate()` の戻り値として公開（他の拡張・テスト用） |
+
+確認は、VS Code の開発ホストで別のテスト用拡張から `vscode.lm.invokeTool`（読み取り）と公開 API（編集）を呼び出して行った。engines は `vscode.lm.registerTool` が安定版になった 1.95 以上に変更。
 
 **今後の候補**: ステージ済み（index）との比較、コマンドライン用の `git diff` textconv スクリプト、PDF のテキスト抽出。
 

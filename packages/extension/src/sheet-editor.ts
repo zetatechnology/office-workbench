@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { EditError, EncodingError, MAX_FILE_BYTES, type HostMessage, type SheetSession, type WebviewMessage } from '@office-workbench/core';
+import { EditError, EncodingError, MAX_FILE_BYTES, type EditOp, type HostMessage, type SheetSession, type WebviewMessage } from '@office-workbench/core';
 import { getWebviewHtml } from './html';
 
 /** An open workbook or CSV file shared by all of its editor panels. */
-class SheetDocument implements vscode.CustomDocument {
+export class SheetDocument implements vscode.CustomDocument {
   readonly panels = new Set<vscode.WebviewPanel>();
   /** Edits applied since the last save or revert (undo counts down), to know if it is clean. */
   unsavedEdits = 0;
@@ -33,8 +33,30 @@ class SheetDocument implements vscode.CustomDocument {
     for (const panel of this.panels) for (const message of messages) void panel.webview.postMessage(message);
   }
 
+  /** Registers cleanup to run when VS Code disposes the document. */
+  onDispose(fn: () => void): void {
+    this.disposables.push({ dispose: fn });
+  }
+
   dispose(): void {
     for (const d of this.disposables) d.dispose();
+  }
+}
+
+/** Open sheet documents by URI, shared by the providers and the language model tools. */
+export class SheetDocuments {
+  private readonly documents = new Map<string, { document: SheetDocument; provider: SheetEditorProvider }>();
+
+  get(uri: vscode.Uri): { document: SheetDocument; provider: SheetEditorProvider } | undefined {
+    return this.documents.get(uri.toString());
+  }
+
+  add(document: SheetDocument, provider: SheetEditorProvider): void {
+    const key = document.uri.toString();
+    this.documents.set(key, { document, provider });
+    document.onDispose(() => {
+      if (this.documents.get(key)?.document === document) this.documents.delete(key);
+    });
   }
 }
 
@@ -46,6 +68,7 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly createSession: (fileName: string, data: Uint8Array) => SheetSession,
+    private readonly registry: SheetDocuments,
   ) {}
 
   async openCustomDocument(uri: vscode.Uri, openContext: vscode.CustomDocumentOpenContext): Promise<SheetDocument> {
@@ -57,6 +80,7 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
       void this.onDiskChange(document),
     );
     if (openContext.backupId) document.unsavedEdits = 1;
+    this.registry.add(document, this);
     return document;
   }
 
@@ -72,21 +96,7 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     const subscription = panel.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
       if (message.type !== 'edit') return post(await document.session.handle(message));
       try {
-        const edit = await document.session.edit(message.op);
-        document.unsavedEdits++;
-        document.broadcast(edit.messages);
-        this.changes.fire({
-          document,
-          label: edit.label,
-          undo: async () => {
-            document.unsavedEdits--;
-            document.broadcast(await edit.undo());
-          },
-          redo: async () => {
-            document.unsavedEdits++;
-            document.broadcast(await edit.redo());
-          },
-        });
+        await this.applyEdit(document, message.op);
       } catch (e) {
         if (!(e instanceof EditError)) console.error(e);
         post([{ type: 'notice', message: e instanceof Error ? e.message : String(e) }]);
@@ -95,6 +105,28 @@ export class SheetEditorProvider implements vscode.CustomEditorProvider<SheetDoc
     panel.onDidDispose(() => {
       document.panels.delete(panel);
       subscription.dispose();
+    });
+  }
+
+  /**
+   * Applies an edit as one undo step and updates every view of the document. Throws EditError when
+   * the edit is refused.
+   */
+  async applyEdit(document: SheetDocument, op: EditOp): Promise<void> {
+    const edit = await document.session.edit(op);
+    document.unsavedEdits++;
+    document.broadcast(edit.messages);
+    this.changes.fire({
+      document,
+      label: edit.label,
+      undo: async () => {
+        document.unsavedEdits--;
+        document.broadcast(await edit.undo());
+      },
+      redo: async () => {
+        document.unsavedEdits++;
+        document.broadcast(await edit.redo());
+      },
     });
   }
 
