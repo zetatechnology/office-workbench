@@ -3,8 +3,8 @@
 param([Parameter(Mandatory)][string]$File)
 $ErrorActionPreference = 'Stop'
 
-# Word may already be running for the user; only quit the instance this script started.
-$running = [bool](Get-Process WINWORD -ErrorAction SilentlyContinue)
+# New-Object starts a separate (hidden) Word instance even when the user has Word open, so quitting
+# it never closes the user's documents.
 $word = New-Object -ComObject Word.Application
 $word.DisplayAlerts = 0
 try {
@@ -14,6 +14,6 @@ try {
   foreach ($line in $doc.Content.Text.Split([char]13)) { if ($line.Trim()) { Write-Host "  | $line" } }
   $doc.Close($false)
 } finally {
-  if (-not $running) { $word.Quit() }
+  $word.Quit()
   [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($word)
 }

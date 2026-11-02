@@ -31,6 +31,8 @@ export class ViewerBackend {
         case 'loadSheet':
         case 'edit':
           return (await this.openWorkbook()).handle(message);
+        default:
+          return [];
       }
     } catch (e) {
       return [{ type: 'error', message: e instanceof Error ? e.message : String(e) }];

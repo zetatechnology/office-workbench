@@ -1,8 +1,13 @@
 // The edit panel of the Word viewer: every paragraph of the body and of table cells as a text
 // box. Edits are sent as operations when a paragraph loses focus (or on Enter / Backspace for
-// splitting and deleting); the host replies with a new outline and preview.
+// splitting and deleting); the host replies to each with a new outline (or a refusal).
+//
+// Paragraph ids are positions, so an insert or delete shifts the ids after it. While one is
+// waiting for its reply, later edits are held back and then sent with their ids moved to match
+// (or dropped, when they were for the deleted paragraph).
 import type { DocxBlock, DocxEditOp, DocxParagraph, DocxTable } from '@office-workbench/core';
 import { el } from '../common/host';
+import { remap, siblingId } from './ids';
 
 export interface OutlineOptions {
   send(op: DocxEditOp): void;
@@ -19,8 +24,13 @@ export class Outline {
   private readonly list = el('div', 'outline-list');
   /** Paragraph text boxes by id, with the text the document has for them. */
   private boxes = new Map<string, { box: HTMLTextAreaElement; text: string }>();
-  /** Where to put the caret after the next update (the paragraph an Enter or Backspace moved to). */
+  /** Where to put the caret after the next update (the paragraph an Enter moved to). */
   private pending?: Focus;
+  /** Edits sent and not yet answered, oldest first. */
+  private readonly sent: DocxEditOp[] = [];
+  /** An insert or delete waiting for its reply, and the edits made meanwhile (in ids from before it). */
+  private waiting?: DocxEditOp;
+  private held: DocxEditOp[] = [];
 
   constructor(private readonly options: OutlineOptions) {
     const header = el('div', 'outline-header', 'Edit paragraphs');
@@ -34,17 +44,45 @@ export class Outline {
     return !!focused && focused.box.value !== focused.text;
   }
 
-  /** Sends the focused paragraph's typing, keeping the focus there. */
-  commitTyping(): void {
+  /** Sends the focused paragraph's typing, keeping the focus there; returns whether there was any. */
+  commitTyping(): boolean {
     const focused = this.focused();
-    if (focused && focused.box.value !== focused.text) {
-      this.commit(focused.id, focused.box);
+    if (!focused || focused.box.value === focused.text) return false;
+    this.commit(focused.id, focused.box);
+    return true;
+  }
+
+  /** The host answered the oldest edit this view sent (its new outline was rendered before). */
+  answered(ok: boolean): void {
+    const op = this.sent.shift();
+    if (!ok) this.pending = undefined;
+    if (!op || op !== this.waiting) return;
+    this.waiting = undefined;
+    const held = this.held;
+    this.held = [];
+    for (const next of held) {
+      const mapped = ok ? remap(next, op) : next;
+      if (mapped) this.dispatch(mapped);
     }
   }
 
-  /** An edit was refused: the caret stays where it is. */
-  refused(): void {
-    this.pending = undefined;
+  /** The whole document was (re)loaded: anything in flight no longer applies. */
+  reset(blocks: DocxBlock[]): void {
+    this.sent.length = 0;
+    this.waiting = undefined;
+    this.held = [];
+    this.render(blocks);
+  }
+
+  private dispatch(op: DocxEditOp): void {
+    if (this.waiting) {
+      this.held.push(op);
+      return;
+    }
+    this.sent.push(op);
+    if (op.type !== 'setParagraphText') this.waiting = op;
+    if (op.type === 'insertParagraph') this.pending = { id: siblingId(op.after, 1), start: 0, end: 0 };
+    this.options.send(op);
   }
 
   render(blocks: DocxBlock[]): void {
@@ -135,20 +173,28 @@ export class Outline {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
       // Like Word: the text after the caret moves to a new paragraph below.
       e.preventDefault();
+      const entry = this.boxes.get(p.id)!;
       const before = value.slice(0, start);
       const after = value.slice(end);
-      this.pending = { id: siblingId(p.id, 1), start: 0, end: 0 };
-      this.boxes.get(p.id)!.text = value;
-      this.options.send({ type: 'insertParagraph', after: p.id, text: after, update: before === p.text ? undefined : before });
+      const update = before === entry.text ? undefined : before;
+      // Show the split at once, so another Enter splits what is on screen.
+      entry.text = before;
+      box.value = before;
+      fit(box);
+      this.dispatch({ type: 'insertParagraph', after: p.id, text: after, update });
     } else if (e.key === 'Backspace' && !value && start === 0 && end === 0) {
       const previous = this.neighbour(p.id, -1);
       if (!previous) return;
       e.preventDefault();
-      this.pending = { id: previous.id, start: previous.text.length, end: previous.text.length };
-      this.options.send({ type: 'deleteParagraph', id: p.id });
+      // Hide the paragraph and move on at once, so another Backspace does not delete twice.
+      this.boxes.delete(p.id);
+      (box.closest('.outline-row') as HTMLElement).hidden = true;
+      previous.box.focus();
+      previous.box.setSelectionRange(previous.box.value.length, previous.box.value.length);
+      this.dispatch({ type: 'deleteParagraph', id: p.id });
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      box.value = p.text;
+      box.value = this.boxes.get(p.id)?.text ?? p.text;
       fit(box);
     } else if (e.key === 'Tab' && !e.ctrlKey) {
       e.preventDefault();
@@ -168,7 +214,7 @@ export class Outline {
     const entry = this.boxes.get(id);
     if (entry?.box !== box || box.value === entry.text) return;
     entry.text = box.value;
-    this.options.send({ type: 'setParagraphText', id, text: box.value });
+    this.dispatch({ type: 'setParagraphText', id, text: box.value });
   }
 
   /** The editable paragraph before or after `id` in document order. */
@@ -185,12 +231,6 @@ export class Outline {
     const entry = this.boxes.get(active.dataset.id);
     return entry?.box === active ? { id: active.dataset.id, ...entry } : undefined;
   }
-}
-
-function siblingId(id: string, delta: number): string {
-  const parts = id.split('/');
-  parts[parts.length - 1] = String(Number(parts[parts.length - 1]) + delta);
-  return parts.join('/');
 }
 
 /** Grows a text box to its content. */

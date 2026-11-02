@@ -36,7 +36,7 @@ interface Located {
   host: Element;
 }
 
-type TextTarget = { slide: number; shape: string; cell?: { row: number; col: number } };
+type TextTarget = { slide: number; slideId?: string; shape: string; cell?: { row: number; col: number } };
 
 export class PresentationDocument implements EditableDocument<PptxEditOp> {
   private constructor(
@@ -63,9 +63,9 @@ export class PresentationDocument implements EditableDocument<PptxEditOp> {
   async apply(op: PptxEditOp): Promise<AppliedChange> {
     switch (op.type) {
       case 'setShapeText':
-        return this.setText({ slide: op.slide, shape: op.shape }, op.paragraphs);
+        return this.setText(await this.target(op), op.paragraphs);
       case 'setTableCellText':
-        return this.setText({ slide: op.slide, shape: op.shape, cell: { row: op.row, col: op.col } }, op.paragraphs);
+        return this.setText({ ...(await this.target(op)), cell: { row: op.row, col: op.col } }, op.paragraphs);
       case 'duplicateSlide':
         return this.structural('Duplicate Slide', () => this.duplicateSlide(op.slide));
       case 'deleteSlide':
@@ -79,11 +79,19 @@ export class PresentationDocument implements EditableDocument<PptxEditOp> {
 
   // --- Text ----------------------------------------------------------------------------------
 
+  /** The slide of a text edit by position, or by id when the edit names one. */
+  private async target(op: { slide: number; slideId?: string; shape: string }): Promise<TextTarget> {
+    if (op.slideId === undefined) return { slide: op.slide, shape: op.shape };
+    const slide = (await slideParts(this.pkg, this.presPath)).findIndex((s) => attr(s.sldId, 'id') === op.slideId);
+    if (slide < 0) throw new EditError('The slide being edited was deleted.');
+    return { slide, shape: op.shape };
+  }
+
   private async setText(target: TextTarget, paragraphs: string[]): Promise<AppliedChange> {
     if (!Array.isArray(paragraphs) || paragraphs.some((p) => typeof p !== 'string')) throw new EditError('paragraphs must be a list of strings.');
     const { doc, host } = await this.locate(target);
     const before = child(host, 'txBody')?.cloneNode(true) as Element | undefined;
-    writeParagraphs(doc, ensureTextBody(doc, host), paragraphs.length ? paragraphs : ['']);
+    writeParagraphs(doc, ensureTextBody(doc, host), paragraphs.length ? paragraphs : [''], target.slide + 1);
     return {
       label: target.cell ? 'Edit Table Cell' : 'Edit Text',
       activate: target.slide,
@@ -346,10 +354,17 @@ function ensureTextBody(doc: Document, host: Element): Element {
   return body;
 }
 
-/** Text of a DrawingML paragraph; line breaks as "\n". */
-function paragraphText(p: Element): string {
+/**
+ * Text of a DrawingML paragraph as the slide model shows it: line breaks as "\n", and slide number
+ * fields as the slide's number (their stored text is only a placeholder such as "‹#›").
+ */
+function paragraphText(p: Element, slideNumber: number): string {
   return children(p)
-    .map((el) => (el.localName === 'br' ? '\n' : el.localName === 'r' || el.localName === 'fld' ? (child(el, 't')?.textContent ?? '') : ''))
+    .map((el) => {
+      if (el.localName === 'br') return '\n';
+      if (el.localName === 'fld' && attr(el, 'type') === 'slidenum') return String(slideNumber);
+      return el.localName === 'r' || el.localName === 'fld' ? (child(el, 't')?.textContent ?? '') : '';
+    })
     .join('');
 }
 
@@ -359,9 +374,9 @@ function paragraphText(p: Element): string {
  * Changed paragraphs keep their `a:pPr` and `a:endParaRPr`, and take the formatting of their first
  * run; new paragraphs copy the properties of the paragraph before them.
  */
-function writeParagraphs(doc: Document, body: Element, values: string[]): void {
+function writeParagraphs(doc: Document, body: Element, values: string[], slideNumber: number): void {
   const old = children(body, 'p');
-  const oldText = old.map(paragraphText);
+  const oldText = old.map((p) => paragraphText(p, slideNumber));
   const next = values.map((v) => v.replace(/\r\n|\r/g, '\n'));
 
   // Longest common subsequence of unchanged paragraphs.
@@ -387,7 +402,7 @@ function writeParagraphs(doc: Document, body: Element, values: string[]): void {
       let score = 0;
       for (let k = 0; k < pairs; k++) {
         const [a, b] = gapOld.length > gapNew.length ? [k + offset, k] : [k, k + offset];
-        score += similarity(paragraphText(gapOld[a]), gapNew[b]);
+        score += similarity(oldText[old.indexOf(gapOld[a])], gapNew[b]);
       }
       if (score > bestScore) [best, bestScore] = [offset, score];
     }

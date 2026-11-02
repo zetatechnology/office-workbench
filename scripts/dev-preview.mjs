@@ -56,9 +56,9 @@ async function handleSession(file, message) {
         const edit = await state.session.edit(message.op);
         state.undo.push(edit);
         state.redo = [];
-        return edit.messages;
+        return [...edit.messages, { type: 'edited', ok: true }];
       } catch (e) {
-        return [{ type: 'notice', message: e.message }];
+        return [{ type: 'notice', message: e.message }, { type: 'edited', ok: false }];
       }
     case 'undo':
     case 'redo': {

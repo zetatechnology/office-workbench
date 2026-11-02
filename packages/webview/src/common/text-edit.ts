@@ -3,6 +3,8 @@
 // a line break, Esc cancels, Ctrl+Enter or clicking elsewhere commits. Typing, IME composition
 // and native undo are left to the browser.
 
+import { send } from './host';
+
 /** Elements that start a paragraph when read back. */
 const BLOCKS = new Set(['DIV', 'P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
 
@@ -170,12 +172,19 @@ export function guardUndoKeys(isTyping: () => boolean): void {
   );
 }
 
-/** Runs `commit` when the save key is pressed, before VS Code saves, so typing in progress is included. */
-export function commitOnSave(commit: () => void): void {
+/**
+ * Ctrl+S with typing in progress: `commit` sends the typing (returning whether there was any), then
+ * the host saves once it has applied it. Without typing, the key goes to VS Code as usual.
+ */
+export function commitOnSave(commit: () => boolean): void {
   window.addEventListener(
     'keydown',
     (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') commit();
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's' || !commit()) return;
+      // VS Code would save before the host has applied the typing: ask the host to save after it.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      send({ type: 'save' });
     },
     true,
   );

@@ -11,7 +11,11 @@ export type AnyEditOp = EditOp | DocxEditOp | PptxEditOp;
 export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'loadSheet'; index: number }
-  | { type: 'edit'; op: AnyEditOp };
+  | { type: 'edit'; op: AnyEditOp }
+  /** Word: the file as it is now, for the page view (sent after edits settle). */
+  | { type: 'preview' }
+  /** Save once the edits sent before this message are applied (typing committed by Ctrl+S). */
+  | { type: 'save' };
 
 export interface MediaPayload {
   path: string;
@@ -22,6 +26,8 @@ export interface MediaPayload {
 export type HostMessage =
   /** The document to render; `blocks` is its editable outline when it can be edited. */
   | { type: 'docx'; fileName: string; data: Uint8Array; blocks?: DocxBlock[] }
+  /** The editable outline after an edit; the view asks for the page data (`preview`) when it wants it. */
+  | { type: 'docxOutline'; blocks: DocxBlock[] }
   | { type: 'pdf'; fileName: string; data: Uint8Array }
   /** Workbook structure; sent on load and after structural edits. Views reload their sheets. */
   | {
@@ -49,6 +55,8 @@ export type HostMessage =
       /** Slide to show (after slide operations). */
       activate?: number;
     }
+  /** To the view that sent an edit, after the edit's own messages: whether it was applied. */
+  | { type: 'edited'; ok: boolean }
   /** A non-fatal problem to show briefly (e.g. an edit that was refused). */
   | { type: 'notice'; message: string }
   | { type: 'error'; message: string };

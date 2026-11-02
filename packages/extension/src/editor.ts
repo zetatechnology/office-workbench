@@ -11,6 +11,8 @@ export class OfficeDocument implements vscode.CustomDocument {
   unsavedEdits = 0;
   /** File change events up to this time come from our own save. */
   ignoreChangesUntil = 0;
+  /** Settles when the edits received from the panels so far have been applied (or refused). */
+  applied: Promise<unknown> = Promise.resolve();
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -103,12 +105,21 @@ export class OfficeEditorProvider implements vscode.CustomEditorProvider<OfficeD
       for (const message of messages) void panel.webview.postMessage(message);
     };
     const subscription = panel.webview.onDidReceiveMessage(async (message: WebviewMessage) => {
+      if (message.type === 'save') {
+        // Ctrl+S with typing in progress: the view sent the typing as an edit just before this.
+        await document.applied;
+        await vscode.workspace.save(document.uri);
+        return;
+      }
       if (message.type !== 'edit') return post(await document.session.handle(message));
+      const applying = this.applyEdit(document, message.op);
+      document.applied = applying.catch(() => undefined);
       try {
-        await this.applyEdit(document, message.op);
+        await applying;
+        post([{ type: 'edited', ok: true }]);
       } catch (e) {
         if (!(e instanceof EditError)) console.error(e);
-        post([{ type: 'notice', message: e instanceof Error ? e.message : String(e) }]);
+        post([{ type: 'notice', message: e instanceof Error ? e.message : String(e) }, { type: 'edited', ok: false }]);
       }
     });
     panel.onDidDispose(() => {

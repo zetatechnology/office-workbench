@@ -14,6 +14,8 @@ export interface MediaRef {
 
 export interface Slide {
   index: number;
+  /** `sldId@id`: stays the same when slides are moved, inserted or deleted. */
+  id: string;
   hidden: boolean;
   background: Fill;
   elements: SlideElement[];
@@ -148,8 +150,9 @@ export interface Run {
  * `cNvPr@id` on the slide. A paragraph's "\n" (or "\v") is a line break within the paragraph.
  */
 export type PptxEditOp =
-  | { type: 'setShapeText'; slide: number; shape: string; paragraphs: string[] }
-  | { type: 'setTableCellText'; slide: number; shape: string; row: number; col: number; paragraphs: string[] }
+  /** `slideId` (the slide's `id`), when given, wins over `slide`: it still finds the slide after others moved. */
+  | { type: 'setShapeText'; slide: number; slideId?: string; shape: string; paragraphs: string[] }
+  | { type: 'setTableCellText'; slide: number; slideId?: string; shape: string; row: number; col: number; paragraphs: string[] }
   | { type: 'duplicateSlide'; slide: number }
   | { type: 'deleteSlide'; slide: number }
   | { type: 'moveSlide'; slide: number; to: number };

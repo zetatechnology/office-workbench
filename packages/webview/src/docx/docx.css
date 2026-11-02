@@ -175,3 +175,9 @@ button.tool.active {
 .outline-table .outline-marker {
   display: none;
 }
+
+/* The page view lags behind the edit panel until the next rendering arrives. */
+.docx-host.stale .docx-content {
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}

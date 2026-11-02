@@ -46,6 +46,8 @@ export class WorkbookSession implements SheetSession {
           return [{ type: 'sheet', sheet: await workbook.sheet(message.index) }];
         case 'edit':
           return [{ type: 'notice', message: 'This workbook is read-only.' }];
+        default:
+          return [];
       }
     } catch (e) {
       return [{ type: 'error', message: e instanceof Error ? e.message : String(e) }];

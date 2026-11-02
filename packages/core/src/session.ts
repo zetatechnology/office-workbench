@@ -57,6 +57,16 @@ export abstract class DocumentSession<Doc extends EditableDocument<Op>, Op> impl
   /** Every message a view needs to show the document; `update` is set after an edit. */
   protected abstract view(document: Doc, update: { activate?: number } | undefined): Promise<HostMessage[]>;
 
+  /** Answers view requests other than `ready`. */
+  protected request(_document: Doc, _message: WebviewMessage): Promise<HostMessage[]> {
+    return Promise.resolve([]);
+  }
+
+  /** Reads the document in turn with edits (for callers that need only part of the view). */
+  protected inspect<T>(fn: (document: Doc) => Promise<T>): Promise<T> {
+    return this.run(async () => fn(await this.document));
+  }
+
   reset(data: Uint8Array): void {
     this.generation++;
     this.document = this.open(data);
@@ -67,7 +77,7 @@ export abstract class DocumentSession<Doc extends EditableDocument<Op>, Op> impl
       try {
         const document = await this.document;
         if (message.type === 'ready') return this.view(document, undefined);
-        return [];
+        return this.request(document, message);
       } catch (e) {
         return [{ type: 'error', message: e instanceof Error ? e.message : String(e) }];
       }

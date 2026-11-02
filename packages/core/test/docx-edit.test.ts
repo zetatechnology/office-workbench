@@ -137,6 +137,12 @@ describe('editing Word paragraphs', () => {
     expect(blocks[2]).toMatchObject({ text: '箇条書き' });
   });
 
+  it('refuses to delete the only paragraph between two tables', async () => {
+    const table = (text: string) => `<w:tbl><w:tblGrid><w:gridCol w:w="2000"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`;
+    const doc = await WordDocument.open(await withBody(`${table('A')}<w:p/>${table('B')}<w:p><w:r><w:t>end</w:t></w:r></w:p>`));
+    await expect(doc.apply({ type: 'deleteParagraph', id: '1' })).rejects.toThrow(/separates two tables/);
+  });
+
   it('refuses edits that would break the document', async () => {
     const doc = await WordDocument.open(sample());
     const blocks = await doc.blocks();
@@ -156,7 +162,11 @@ describe('editing Word paragraphs', () => {
     const original = sample();
     const session = new WordSession('sample.docx', original);
     const [initial] = await session.handle({ type: 'ready' });
-    const blocksOf = (messages: HostMessage[]) => (messages[0] as Extract<HostMessage, { type: 'docx' }>).blocks!;
+    const blocksOf = (messages: HostMessage[]) => {
+      const [message] = messages;
+      if (message.type !== 'docx' && message.type !== 'docxOutline') throw new Error(`unexpected ${message.type}`);
+      return message.blocks!;
+    };
     expect(initial.type === 'docx' && initial.data).toBe(original);
 
     const edits = [
@@ -165,6 +175,11 @@ describe('editing Word paragraphs', () => {
       await session.edit({ type: 'deleteParagraph', id: '5' }),
     ];
     expect(edits.map((e) => e.label)).toEqual(['Edit Paragraph', 'Insert Paragraph', 'Delete Paragraph']);
+    // After an edit only the outline is sent; the page data comes when a view asks for it.
+    expect(edits[0].messages.map((m) => m.type)).toEqual(['docxOutline']);
+    const [preview] = await session.handle({ type: 'preview' });
+    expect(preview.type === 'docx' && (await toMarkdown('docx', preview.data))).toContain('表の例:');
+    expect(await session.blocks()).toEqual(blocksOf(edits[2].messages));
     const after = paragraphs(blocksOf(edits[2].messages)).map((p) => p.text);
     expect(after.slice(4, 7)).toEqual(['二つ目の項目', '表の例:', '追加']);
 

@@ -78,6 +78,32 @@ describe('editing slide text', () => {
     expect(xml).not.toContain('第二レベル');
   });
 
+  it('keeps a slide number field as it is while other paragraphs of the shape change', async () => {
+    // The stored field text is a placeholder; the slide model shows the real number.
+    const withField = await withSlide(2, (xml) =>
+      xml.replace('<a:t>Last item</a:t></a:r>', '<a:t>Last item</a:t></a:r><a:fld id="{1}" type="slidenum"><a:t>‹#›</a:t></a:fld>'),
+    );
+    const { presentation: pres } = await parsePresentation(withField);
+    const current = textOf(shapeById(pres.slides[1], '3'));
+    expect(current[3]).toBe('Last item2');
+    const doc = await PresentationDocument.open(withField);
+    await doc.apply({ type: 'setShapeText', slide: 1, shape: '3', paragraphs: ['changed', ...current.slice(1)] });
+    const xml = (await part(await doc.save(), 'ppt/slides/slide2.xml'))!;
+    expect(xml).toContain('<a:fld id="{1}" type="slidenum"><a:t>‹#›</a:t></a:fld>');
+    expect(xml).toContain('<a:t>changed</a:t>');
+  });
+
+  it('finds the slide being edited by its id after slides moved', async () => {
+    const doc = await PresentationDocument.open(sample());
+    const { slides } = (await doc.read(false)).presentation;
+    // Typing started on slide 3 (id 258); meanwhile another edit moved it to the front.
+    await doc.apply({ type: 'moveSlide', slide: 2, to: 0 });
+    await doc.apply({ type: 'setShapeText', slide: 2, slideId: slides[2].id, shape: '2', paragraphs: ['図形（編集）'] });
+    const after = (await doc.read(false)).presentation.slides;
+    expect(textOf(shapes(after[0])[0])).toEqual(['図形（編集）']);
+    expect(textOf(shapes(after[2])[0])).toEqual(['箇条書き']);
+  });
+
   it('writes into empty placeholders and shapes without a text body', async () => {
     const original = await withSlide(1, (xml) => xml.replace(/(<p:cNvPr id="3"[\s\S]*?<p:spPr\/>)<p:txBody>[\s\S]*?<\/p:txBody>/, '$1'));
     expect(textOf(shapeById((await presentation(original)).slides[0], '3'))).toEqual(['']);
@@ -121,6 +147,7 @@ describe('editing slide text', () => {
     await doc.apply({ type: 'setShapeText', slide: 1, shape: '3', paragraphs: ['changed', ...current.slice(1)] });
 
     await expect(doc.apply({ type: 'setShapeText', slide: 3, shape: '3', paragraphs: ['x'] })).rejects.toThrow(/chart/);
+    await expect(doc.apply({ type: 'setShapeText', slide: 0, slideId: '999', shape: '2', paragraphs: ['x'] })).rejects.toThrow('The slide being edited was deleted.');
     await expect(doc.apply({ type: 'setShapeText', slide: 2, shape: '99', paragraphs: ['x'] })).rejects.toThrow('That shape no longer exists on the slide.');
     await expect(doc.apply({ type: 'setShapeText', slide: 9, shape: '2', paragraphs: ['x'] })).rejects.toBeInstanceOf(EditError);
     await expect(doc.apply({ type: 'setTableCellText', slide: 3, shape: '5', row: 9, col: 0, paragraphs: ['x'] })).rejects.toThrow('That table cell no longer exists.');

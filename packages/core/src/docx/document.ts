@@ -249,6 +249,11 @@ export class WordDocument implements EditableDocument<DocxEditOp> {
     if (path(p, 'pPr', 'sectPr')) return 'This paragraph ends a section, so it cannot be deleted here.';
     const paragraphs = children(slot.container, 'p');
     const blocks = children(slot.container).filter((el) => ['p', 'tbl', 'sdt', 'customXml'].includes(el.localName ?? ''));
+    const at = blocks.indexOf(p);
+    // Two tables with nothing between them become one table in Word.
+    if (blocks[at - 1]?.localName === 'tbl' && blocks[at + 1]?.localName === 'tbl') {
+      return 'This paragraph separates two tables, so it cannot be deleted (Word would merge them).';
+    }
     // Word requires a paragraph at the end of the document and of every table cell.
     if (paragraphs.length === 1 || blocks[blocks.length - 1] === p) {
       return slot.container.localName === 'tc'

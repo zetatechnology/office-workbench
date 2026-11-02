@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import {
   decodeText, describeDocumentEdit, describeEdit, describePresentationEdit, EditError, MAX_FILE_BYTES, textKindOf, toDocxOps,
-  toEditOp, toMarkdown, toOutline, toPptxOps, type AnyEditOp, type DocumentToolEdit, type HostMessage, type PresentationToolEdit,
+  toEditOp, toMarkdown, toOutline, toPptxOps, PresentationSession, WordSession, type AnyEditOp, type EditSession, type DocumentToolEdit, type HostMessage, type PresentationToolEdit,
   type ToolEdit,
 } from '@office-workbench/core';
 import type { OfficeDocuments } from './editor';
@@ -50,9 +50,9 @@ export function registerLanguageModelTools(context: vscode.ExtensionContext, reg
         kind: 'Word documents (.docx/.docm)',
         viewType: 'officeWorkbench.docx',
         describe: describeDocumentEdit,
-        async convert(edit, state) {
-          const message = state.find((m) => m.type === 'docx');
-          return toDocxOps(edit, (message?.type === 'docx' && message.blocks) || []);
+        async convert(edit, session) {
+          if (!(session instanceof WordSession)) throw new Error('The document is not open in the Word editor.');
+          return toDocxOps(edit, await session.blocks());
         },
       }),
     editPresentation: (input) =>
@@ -61,10 +61,9 @@ export function registerLanguageModelTools(context: vscode.ExtensionContext, reg
         kind: 'PowerPoint presentations (.pptx/.pptm)',
         viewType: 'officeWorkbench.pptx',
         describe: describePresentationEdit,
-        async convert(edit, state) {
-          const message = state.find((m) => m.type === 'presentation');
-          if (message?.type !== 'presentation') throw new Error('The presentation could not be read.');
-          return toPptxOps(edit, message.presentation);
+        async convert(edit, session) {
+          if (!(session instanceof PresentationSession)) throw new Error('The presentation is not open in the PowerPoint editor.');
+          return toPptxOps(edit, await session.presentation());
         },
       }),
   };
@@ -159,8 +158,8 @@ interface EditTool<Edit> {
   kind: string;
   viewType: string;
   describe(edit: Edit): string;
-  /** Operations for one edit, given what the editor shows now (its `ready` messages). */
-  convert(edit: Edit, state: HostMessage[]): Promise<AnyEditOp[]>;
+  /** Operations for one edit, against the document as it is now. */
+  convert(edit: Edit, session: EditSession<AnyEditOp>): Promise<AnyEditOp[]>;
 }
 
 /** Applies tool edits to a document or presentation, one undo step per operation. */
@@ -171,15 +170,24 @@ async function editWith<Edit>(input: EditInput<Edit>, registry: OfficeDocuments,
   const { document, provider } = await openEditor(uri, registry, tool.viewType);
 
   const done: string[] = [];
+  /** Operations applied so far, including those of an edit that failed part-way. */
+  let applied = 0;
   for (const [i, edit] of input.edits.entries()) {
+    let ops: AnyEditOp[] = [];
+    let step = 0;
     try {
-      const ops = await tool.convert(edit, await document.session.handle({ type: 'ready' }));
-      for (const op of ops) await provider.applyEdit(document, op);
+      ops = await tool.convert(edit, document.session);
+      for (; step < ops.length; step++) {
+        await provider.applyEdit(document, ops[step]);
+        applied++;
+      }
       done.push(`- Done: ${tool.describe(edit)}${ops.length > 1 ? ` (${ops.length} places)` : ''}`);
     } catch (e) {
       const reason = e instanceof EditError || e instanceof Error ? e.message : String(e);
-      const after = done.length ? 'Earlier edits were applied and can be undone in the editor.' : 'Nothing was changed.';
-      return [...done, `- Failed (edit ${i + 1}): ${tool.describe(edit)}: ${reason}`, '', after].join('\n');
+      // An edit that changes several places (replaceText) may fail after changing some of them.
+      const partly = step > 0 ? ` (${step} of ${ops.length} places were changed before this failed)` : '';
+      const after = applied ? 'The changes made so far stay applied and can be undone in the editor.' : 'Nothing was changed.';
+      return [...done, `- Failed (edit ${i + 1}): ${tool.describe(edit)}${partly}: ${reason}`, '', after].join('\n');
     }
   }
   if (input.save) await vscode.workspace.save(uri);

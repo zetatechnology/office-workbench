@@ -91,8 +91,9 @@ export async function readPresentation(pkg: OoxmlPackage, withMedia = true): Pro
 
   const media = new Map<string, MediaRef>();
   const slides: Slide[] = [];
-  for (const { path: slidePath } of await slideParts(pkg, presPath)) {
-    slides.push(await parseSlide(pkg, slidePath, slides.length, { defaultTextStyle, tableStyles, media }));
+  for (const { path: slidePath, sldId } of await slideParts(pkg, presPath)) {
+    const slide = await parseSlide(pkg, slidePath, slides.length, { defaultTextStyle, tableStyles, media });
+    slides.push({ ...slide, id: attr(sldId, 'id') ?? slidePath });
   }
 
   const bytes = new Map<string, Uint8Array>();
@@ -114,7 +115,7 @@ async function parseSlide(
   slidePath: string,
   index: number,
   shared: { defaultTextStyle?: Element; tableStyles?: Element; media: Map<string, MediaRef> },
-): Promise<Slide> {
+): Promise<Omit<Slide, 'id'>> {
   const slide = await loadPart(pkg, slidePath);
   if (!slide) throw new Error(`Slide ${index + 1} could not be read.`);
   const layoutRel = [...slide.rels.values()].find((r) => r.type === 'slideLayout');

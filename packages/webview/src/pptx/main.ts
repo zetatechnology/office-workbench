@@ -20,7 +20,7 @@ let current = getState<State>().slide ?? 0;
 let editable = false;
 let editor: TextEdit | undefined;
 /** An update that arrived while text was being typed; shown when editing ends. */
-let deferred: Presentation | undefined;
+let deferred: { presentation: Presentation; activate?: number } | undefined;
 
 const toolbar = el('div', 'toolbar');
 const prev = el('button', 'tool', '‹');
@@ -51,7 +51,11 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
 });
 guardUndoKeys(() => !!editor?.dirty);
-commitOnSave(() => editor?.end(true));
+commitOnSave(() => {
+  const typing = !!editor?.dirty;
+  editor?.end(true);
+  return typing;
+});
 stage.addEventListener('dblclick', (e) => startEditing(e));
 
 onHostMessage((message) => {
@@ -66,22 +70,23 @@ onHostMessage((message) => {
   editable = !!message.editable;
   hint.hidden = !editable;
   if (!message.update) setMedia(message.media);
-  if (message.activate !== undefined) current = message.activate;
+  const update = { presentation: message.presentation, activate: message.activate };
   if (editor?.active) {
     if (editor.dirty) {
-      deferred = message.presentation;
+      deferred = update;
       return;
     }
     editor.end(false);
   }
-  show(message.presentation);
+  show(update);
 });
 
 showMessage(app, 'Loading presentation…');
 send({ type: 'ready' });
 
-function show(next: Presentation): void {
-  presentation = next;
+function show(update: { presentation: Presentation; activate?: number }): void {
+  presentation = update.presentation;
+  if (update.activate !== undefined) current = update.activate;
   deferred = undefined;
   if (!presentation.slides.length) return showMessage(app, 'This presentation has no slides.');
   current = Math.min(current, presentation.slides.length - 1);
@@ -199,6 +204,8 @@ function startEditing(e: MouseEvent): void {
   const frame = target.closest<HTMLElement>('[data-shape-id]');
   if (!frame || !stage.contains(frame)) return;
   const slide = presentation.slides[current];
+  // The slide is named by its id too: other edits may move it before this one is applied.
+  const at = { slide: current, slideId: slide.id };
   const shape = frame.dataset.shapeId!;
   const element = slide.elements.find((x): x is ShapeElement | TableElement => (x.type === 'shape' || x.type === 'table') && x.textId === shape);
   if (!element) return;
@@ -209,10 +216,10 @@ function startEditing(e: MouseEvent): void {
     host = target.closest<HTMLElement>('td[data-row]');
     if (!host) return;
     const row = Number(host.dataset.row), col = Number(host.dataset.col);
-    op = (paragraphs) => ({ type: 'setTableCellText', slide: current, shape, row, col, paragraphs });
+    op = (paragraphs) => ({ type: 'setTableCellText', ...at, shape, row, col, paragraphs });
   } else {
     host = frame.querySelector<HTMLElement>(':scope > .text');
-    op = (paragraphs) => ({ type: 'setShapeText', slide: current, shape, paragraphs });
+    op = (paragraphs) => ({ type: 'setShapeText', ...at, shape, paragraphs });
   }
   if (!host) return;
   e.preventDefault();

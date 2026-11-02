@@ -21,6 +21,10 @@ let editing = getState<State>().editing ?? false;
 let blocks: DocxBlock[] | undefined;
 /** Renders are queued so a quick series of edits shows the latest document last. */
 let rendering: Promise<void> = Promise.resolve();
+const PREVIEW_DELAY = 600;
+let previewTimer: ReturnType<typeof setTimeout> | undefined;
+/** Page data requested and not received yet (those replies leave the edit panel alone). */
+let previewsAsked = 0;
 
 const toolbar = el('div', 'toolbar');
 const zoomOut = el('button', 'tool', '−');
@@ -87,19 +91,43 @@ host.addEventListener('scroll', () => {
 });
 
 onHostMessage((message) => {
-  if (message.type === 'error') return showMessage(app, message.message, 'error');
-  if (message.type === 'notice') {
-    outline.refused();
-    return showToast(message.message);
+  switch (message.type) {
+    case 'error':
+      return showMessage(app, message.message, 'error');
+    case 'notice':
+      return showToast(message.message);
+    case 'edited':
+      return outline.answered(message.ok);
+    case 'docxOutline':
+      blocks = message.blocks;
+      outline.render(blocks);
+      schedulePreview();
+      return;
+    case 'docx': {
+      if (previewsAsked > 0) previewsAsked--;
+      else {
+        // Loaded, reverted or changed on disk.
+        blocks = message.blocks;
+        if (blocks) outline.reset(blocks);
+        setEditing(editing);
+      }
+      editToggle.hidden = !blocks;
+      const data = message.data;
+      rendering = rendering.then(() => render(data));
+      return;
+    }
   }
-  if (message.type !== 'docx') return;
-  blocks = message.blocks;
-  editToggle.hidden = !blocks;
-  if (blocks) outline.render(blocks);
-  setEditing(editing);
-  const data = message.data;
-  rendering = rendering.then(() => render(data));
 });
+
+/** After edits, the page view is rebuilt once they pause (building the file and laying out pages is slow). */
+function schedulePreview(): void {
+  host.classList.add('stale');
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    previewsAsked++;
+    send({ type: 'preview' });
+  }, PREVIEW_DELAY);
+}
 
 showMessage(app, 'Loading document…');
 send({ type: 'ready' });
@@ -142,6 +170,7 @@ async function render(data: Uint8Array): Promise<void> {
   }
   next.remove();
   content.replaceChildren(...Array.from(next.childNodes));
+  host.classList.remove('stale');
   applyZoom(zoom);
   host.scrollTop = previousScroll;
   updatePageLabel();
