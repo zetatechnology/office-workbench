@@ -8,3 +8,6 @@
 *.xls binary
 *.doc binary
 *.ppt binary
+*.pdf binary
+# Fixtures are compared byte for byte; never convert their line endings.
+test-fixtures/** binary
