@@ -5,3 +5,5 @@ out/
 .vscode-test/
 coverage/
 ~$*
+packages/extension/LICENSE
+packages/extension/ThirdPartyNotices.txt

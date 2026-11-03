@@ -107,7 +107,9 @@ npm run typecheck
 - **VS Code で動作確認**: このフォルダを VS Code で開き、F5（Run Extension）。`test-fixtures/` を開いた拡張開発ホストが起動します。
 - **ブラウザで Webview を確認**: `npm run build && npm run preview` → http://localhost:5178/ （`-- --dir <フォルダ>` で任意のファイルを表示）。Excel / CSV / Word / PowerPoint は編集でき、Ctrl+Z / Ctrl+Y で元に戻す・やり直し、Ctrl+S で一時フォルダ（`%TEMP%/office-workbench-preview`）へ保存します（元ファイルは変更しません）
 - **編集結果を Office で確認**: `npm run edited-samples` で fixture に各種編集をしたファイルを `%TEMP%/office-workbench-edited` に作り、`npm run check-office`（Windows + Office）で Word / PowerPoint で修復なしに開けるかと内容を確認します（`-Dir <フォルダ>` で任意のファイルも可）
-- **VSIX 作成**: `npm run package`
+- **VSIX 作成**: `npm run package`（`packages/extension/office-workbench-<version>.vsix`。同梱した npm パッケージのライセンス文を `ThirdPartyNotices.txt` に自動で集め、ルートの `LICENSE` をコピーする）
+- **リポジトリ**: 開発は private の `hiroyakubo/office-workbench`、公開は `zetatechnology/office-workbench`。開発用の `main` と `v*` タグは GitHub Actions（`mirror.yml`、シークレット `PUBLIC_REPO_DEPLOY_KEY` の deploy key）で公開用へ自動で push される（force-push はしないので、公開用に直接コミットしないこと）
+- **リリース**: `packages/extension/package.json` の `version` と `CHANGELOG.md` を更新して `main` にマージし、開発用に `v<version>` タグを push する。公開用に転送されたタグで `release.yml` が動き、VSIX を GitHub Release に添付する。公開用のシークレット `VSCE_PAT`（Visual Studio Marketplace）・`OVSX_PAT`（Open VSX）があればそれぞれに公開し、なければ VSIX を Marketplace の管理ページから手でアップロードする。Marketplace 向けの説明は `packages/extension/README.md`
 - **テスト用ファイルの再生成**: `npm run fixtures`（Windows + Microsoft Office が必要。`sample.pdf` は Word から書き出し。生成物はコミット済み）
 
 他の PDF 拡張機能と併用している場合、VS Code がどちらで開くかを尋ねます。右クリックの「Reopen Editor With...」で切り替えられます。
@@ -122,3 +124,7 @@ packages/
 scripts/      ビルド、プレビュー用サーバー、フィクスチャ生成
 test-fixtures/ Office で作成したサンプルファイル（CSV は Excel から Shift_JIS / UTF-8 / UTF-16 で書き出したもの）
 ```
+
+## ライセンス
+
+[MIT](LICENSE)

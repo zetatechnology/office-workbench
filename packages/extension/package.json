@@ -2,18 +2,46 @@
   "name": "office-workbench",
   "displayName": "Office Workbench",
   "description": "View Word, Excel, PowerPoint and PDF files inside VS Code, and edit Word, Excel, PowerPoint and CSV files.",
-  "version": "0.0.1",
-  "publisher": "office-workbench",
-  "private": true,
-  "license": "UNLICENSED",
+  "version": "0.1.0",
+  "publisher": "zetatechnology",
+  "license": "MIT",
+  "preview": true,
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zetatechnology/office-workbench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zetatechnology/office-workbench/issues"
+  },
+  "homepage": "https://github.com/zetatechnology/office-workbench#readme",
   "engines": {
     "vscode": "^1.95.0"
   },
   "categories": [
     "Visualization",
+    "Data Science",
     "Other"
   ],
+  "keywords": [
+    "word",
+    "excel",
+    "powerpoint",
+    "pdf",
+    "docx",
+    "xlsx",
+    "pptx",
+    "csv",
+    "office",
+    "viewer",
+    "editor"
+  ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "contributes": {
     "customEditors": [
       {
