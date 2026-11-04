@@ -134,6 +134,12 @@
         "title": "Compare with HEAD as Text",
         "category": "Office Workbench",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "officeWorkbench.exportMarkdownToPdf",
+        "title": "Export Markdown to PDF",
+        "category": "Office Workbench",
+        "icon": "$(file-pdf)"
       }
     ],
     "menus": {
@@ -157,6 +163,18 @@
           "command": "officeWorkbench.compareWithHead",
           "when": "activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/ && config.git.enabled && gitOpenRepositoryCount != 0",
           "group": "navigation@2"
+        },
+        {
+          "command": "officeWorkbench.exportMarkdownToPdf",
+          "when": "resourceLangId == markdown && !activeCustomEditorId",
+          "group": "1_officeWorkbench@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "officeWorkbench.exportMarkdownToPdf",
+          "when": "editorLangId == markdown",
+          "group": "1_officeWorkbench@1"
         }
       ],
       "explorer/context": [
@@ -174,6 +192,11 @@
           "command": "officeWorkbench.compareWithHead",
           "when": "resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i && config.git.enabled && gitOpenRepositoryCount != 0",
           "group": "3_compare@20"
+        },
+        {
+          "command": "officeWorkbench.exportMarkdownToPdf",
+          "when": "resourceLangId == markdown",
+          "group": "navigation@22"
         }
       ],
       "commandPalette": [
@@ -192,6 +215,10 @@
         {
           "command": "officeWorkbench.compareWithHead",
           "when": "(activeCustomEditorId =~ /^officeWorkbench\\.(docx|xlsx|pptx)$/ || resourceExtname =~ /^\\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i) && gitOpenRepositoryCount != 0"
+        },
+        {
+          "command": "officeWorkbench.exportMarkdownToPdf",
+          "when": "editorLangId == markdown || resourceLangId == markdown"
         }
       ],
       "scm/resourceState/context": [
@@ -503,7 +530,30 @@
           ]
         }
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Office Workbench",
+      "properties": {
+        "officeWorkbench.markdownPdf.browserPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Path to the Chromium-based browser (Google Chrome, Microsoft Edge, Chromium, Brave) used by **Export Markdown to PDF**. Leave empty to find one automatically."
+        },
+        "officeWorkbench.markdownPdf.pageSize": {
+          "type": "string",
+          "default": "A4",
+          "enum": [
+            "A4",
+            "A3",
+            "A5",
+            "Letter",
+            "Legal"
+          ],
+          "markdownDescription": "Paper size used by **Export Markdown to PDF**."
+        }
+      }
+    }
   },
   "dependencies": {
     "@office-workbench/core": "*"

@@ -40,6 +40,15 @@ Double-click a shape, text box or table cell on a slide to edit its text in plac
 - **Open as Markdown** shows a Word document, workbook or presentation as read-only Markdown that updates when the file changes.
 - **Compare with HEAD as Text** diffs the working copy against the Git `HEAD` version as Markdown, so you can review changes to Office files line by line. Available from the editor title bar, the Explorer and the Source Control view.
 
+### Export Markdown to PDF
+
+**Export Markdown to PDF** (editor title `...` menu, editor and Explorer context menus, Command Palette) converts a Markdown file to PDF, including unsaved changes. The Markdown is rendered by VS Code's built-in Markdown engine, the same one the preview uses, and printed by a Chromium-based browser already installed on your computer: Google Chrome, Microsoft Edge (preinstalled on Windows), Chromium or Brave.
+
+- `officeWorkbench.markdownPdf.browserPath`: path of the browser to use, if it is not found automatically.
+- `officeWorkbench.markdownPdf.pageSize`: paper size (A4, A3, A5, Letter or Legal; default A4).
+
+Relative image paths resolve against the Markdown file's folder. Scripts in the Markdown's HTML do not run, so diagrams that the preview draws with scripts (such as Mermaid) are exported as code.
+
 ### Language model tools
 
 Office Workbench adds tools that chat agents in VS Code (for example GitHub Copilot in agent mode) can use. Reference them in chat as `#readOffice`, `#editSpreadsheet`, `#editDocument` and `#editPresentation`.
@@ -55,7 +64,7 @@ You are asked to confirm every edit. Edits are applied in the editor as undoable
 
 ## Requirements
 
-VS Code 1.95 or later. Works on Windows, macOS and Linux; Microsoft Office is not required.
+VS Code 1.95 or later. Works on Windows, macOS and Linux; Microsoft Office is not required. Exporting Markdown to PDF needs Google Chrome, Microsoft Edge, Chromium or Brave.
 
 ## Opening files with another editor
 

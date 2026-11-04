@@ -81,6 +81,15 @@ Word / Excel / PowerPoint ファイルを Markdown テキストとして表示�
 - **Excel**: シートごとの表（表示値、1 列目は行番号。値のある行だけ）と数式一覧（下方向にコピーされた数式は `E4:E7` のように範囲でまとめる）、結合セル。非表示シートも含む
 - **PowerPoint**: スライドごとのテキスト・箇条書き・表、ノート、非表示スライドの印
 
+### Markdown を PDF に書き出す
+
+`.md` ファイルを PDF に変換します。エディタの「…」メニュー、エディタの右クリック、エクスプローラーの右クリック、コマンドパレットの「Export Markdown to PDF」から実行し、保存先を選びます（既定は同じフォルダーの同名 `.pdf`）。
+
+- Markdown は VS Code 標準の Markdown 機能（プレビューと同じ markdown-it）で HTML にし、PC にインストール済みの Chromium 系ブラウザ（Google Chrome / Microsoft Edge / Chromium / Brave）をヘッドレスで起動して印刷します。Windows では通常 Edge が入っているため追加のインストールは不要です。見つからない場合は設定 `officeWorkbench.markdownPdf.browserPath` でブラウザの実行ファイルを指定します
+- 用紙サイズは設定 `officeWorkbench.markdownPdf.pageSize`（A4 / A3 / A5 / Letter / Legal、既定 A4）。日本語は OS の日本語フォント（游ゴシック・メイリオ・ヒラギノ・Noto Sans CJK など）で表示し、見出しは PDF のしおりになります
+- 保存していない変更も含めて書き出します。相対パスの画像は Markdown ファイルのフォルダーを基準に読み込みます（ネット上の画像は https のみ）
+- Markdown 内の HTML の `<script>` は実行しません。Mermaid などプレビュー上でスクリプトにより描画される図は図にならず、コードのまま出力されます
+
 ### AI（言語モデル）ツール（Phase 4）
 
 Copilot のエージェントモードなど、VS Code のチャットから使えるツールを提供します（VS Code 1.95 以降）。チャットで `#readOffice` / `#editSpreadsheet` / `#editDocument` / `#editPresentation` と指定することもできます。
@@ -119,7 +128,7 @@ npm run typecheck
 ```
 packages/
   core/       OOXML 読み書き（xlsx・docx・pptx の編集と保存）、CSV / TSV の読み書きと文字コード、数値書式、Webview とのメッセージ定義。VS Code 非依存
-  extension/  VS Code 拡張本体（Office・CSV は CustomEditorProvider、PDF は CustomReadonlyEditorProvider）
+  extension/  VS Code 拡張本体（Office・CSV は CustomEditorProvider、PDF は CustomReadonlyEditorProvider、Markdown の PDF 書き出し）
   webview/    Webview UI（Word / Excel / PowerPoint / PDF ビューア）
 scripts/      ビルド、プレビュー用サーバー、フィクスチャ生成
 test-fixtures/ Office で作成したサンプルファイル（CSV は Excel から Shift_JIS / UTF-8 / UTF-16 で書き出したもの）

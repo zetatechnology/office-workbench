@@ -4,6 +4,7 @@ import { OfficeEditorProvider, OfficeDocuments } from './editor';
 import { OfficeViewerProvider } from './provider';
 import { registerLanguageModelTools, type OfficeWorkbenchApi } from './lm-tools';
 import { registerTextDocuments } from './text-documents';
+import { registerMarkdownPdfExport } from './export-pdf';
 
 /** Formats that are view-only; the Office formats and CSV files have editable editors. */
 const VIEW_ONLY: ViewerKind[] = ['pdf'];
@@ -11,6 +12,7 @@ const CSV_VIEW_TYPE = 'officeWorkbench.csv';
 
 export function activate(context: vscode.ExtensionContext): OfficeWorkbenchApi {
   registerTextDocuments(context);
+  registerMarkdownPdfExport(context);
   const documents = new OfficeDocuments();
   const api = registerLanguageModelTools(context, documents);
   // Webviews are rebuilt from the host on demand; avoid keeping large documents in hidden tabs.

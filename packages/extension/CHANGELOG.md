@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Export Markdown files to PDF, using VS Code's Markdown renderer and an installed Chrome, Edge, Chromium or Brave browser.
+
 ## 0.1.0 (preview)
 
 First public release.
