@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browserArgs, browserCandidates, buildPrintHtml, findBrowser, stripMetaTags } from '../src/markdown-pdf';
+import { browserArgs, browserCandidates, buildPrintHtml, findBrowser, neutralizeMetaTags } from '../src/markdown-pdf';
 
 describe('buildPrintHtml', () => {
   const base = { title: 'Notes', body: '<h1>見出し</h1>', lang: 'ja', pageSize: 'A4' as const };
@@ -26,16 +26,22 @@ describe('buildPrintHtml', () => {
   });
 });
 
-describe('stripMetaTags', () => {
-  it('removes meta tags from the body, including quoted ">" in attributes', () => {
-    const body = '<p>a</p><META http-equiv="refresh" content="0;url=file:///x>y">\n<meta charset=\'utf-8\'/><p>b</p>';
-    expect(stripMetaTags(body)).toBe('<p>a</p>\n<p>b</p>');
+describe('neutralizeMetaTags', () => {
+  it('turns the start of meta tags into text, whatever their quotes', () => {
+    const body = '<p>a</p><META http-equiv="refresh" content="0;url=file:///x>y">\n<meta/><meta\tcharset=x>';
+    expect(neutralizeMetaTags(body)).toBe('<p>a</p>&lt;META http-equiv="refresh" content="0;url=file:///x>y">\n&lt;meta/>&lt;meta\tcharset=x>');
   });
 
-  it('keeps escaped tags in code and is applied by buildPrintHtml', () => {
-    expect(stripMetaTags('<code>&lt;meta http-equiv="refresh"&gt;</code>')).toBe('<code>&lt;meta http-equiv="refresh"&gt;</code>');
+  it('handles a tag with an unclosed quote', () => {
+    const body = "<div>\n<meta http-equiv=refresh content='0;url=file:///other.html' x='>\n</div><p>don't</p>";
+    expect(neutralizeMetaTags(body)).not.toMatch(/<meta/i);
+    expect(neutralizeMetaTags(body)).toContain('<p>don\'t</p>');
+  });
+
+  it('leaves other tags and escaped code alone, and is applied by buildPrintHtml', () => {
+    expect(neutralizeMetaTags('<metadata><code>&lt;meta&gt;</code>')).toBe('<metadata><code>&lt;meta&gt;</code>');
     const html = buildPrintHtml({ title: 't', body: '<meta http-equiv="refresh" content="0">', lang: 'en', pageSize: 'A4' });
-    expect(html).not.toContain('refresh');
+    expect(html).toContain('&lt;meta http-equiv="refresh"');
   });
 });
 

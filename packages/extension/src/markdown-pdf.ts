@@ -43,18 +43,19 @@ ${PRINT_CSS}
 </style>
 </head>
 <body>
-${stripMetaTags(options.body)}
+${neutralizeMetaTags(options.body)}
 </body>
 </html>
 `;
 }
 
 /**
- * Removes <meta> tags from the rendered Markdown: a `<meta http-equiv="refresh">` would navigate away
- * from the page (and its CSP) while it is being printed. Code blocks are escaped, so they are untouched.
+ * Turns the start of every <meta> tag in the rendered Markdown into text: a `<meta http-equiv="refresh">`
+ * would navigate away from the page (and its CSP) while it is being printed. Only the `<meta` is
+ * replaced, so tags with unbalanced quotes are neutralized too. Code blocks are already escaped.
  */
-export function stripMetaTags(html: string): string {
-  return html.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, '');
+export function neutralizeMetaTags(html: string): string {
+  return html.replace(/<(meta[\s/>])/gi, '&lt;$1');
 }
 
 const PRINT_CSS = `
@@ -232,6 +233,18 @@ export async function printToPdf(browser: string, profileDir: string, url: strin
       await cdp.send('Page.enable', {}, sessionId);
       // Besides the page's CSP: also covers any page the document manages to navigate to.
       await cdp.send('Emulation.setScriptExecutionDisabled', { value: true }, sessionId);
+      // Let only the first load of the page through; any later navigation of a frame is refused.
+      let pageRequested = false;
+      cdp.on('Fetch.requestPaused', sessionId, (params) => {
+        const { requestId, request } = params as { requestId: string; request: { url: string } };
+        const allow = !pageRequested && request.url === url;
+        pageRequested ||= allow;
+        const reply = allow
+          ? cdp.send('Fetch.continueRequest', { requestId }, sessionId)
+          : cdp.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId);
+        reply.catch(() => undefined);
+      });
+      await cdp.send('Fetch.enable', { patterns: [{ resourceType: 'Document', requestStage: 'Request' }] }, sessionId);
       const loaded = cdp.waitFor('Page.loadEventFired', sessionId);
       const nav = await cdp.send<{ errorText?: string }>('Page.navigate', { url }, sessionId);
       if (nav.errorText) throw new Error(`the browser could not open the page: ${nav.errorText}`);
@@ -289,6 +302,13 @@ class PipeConnection {
     });
   }
 
+  /** Calls `handler` with the parameters of every `method` event of the session. */
+  on(method: string, sessionId: string, handler: (params: unknown) => void): void {
+    this.listeners.add((message) => {
+      if (message.method === method && message.sessionId === sessionId) handler(message.params);
+    });
+  }
+
   waitFor(method: string, sessionId: string): Promise<void> {
     return new Promise((resolve) => {
       const listener = (message: CdpMessage) => {
@@ -317,6 +337,7 @@ interface CdpMessage {
   id?: number;
   method?: string;
   sessionId?: string;
+  params?: unknown;
   result?: unknown;
   error?: { message: string };
 }
