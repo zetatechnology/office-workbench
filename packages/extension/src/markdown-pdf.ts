@@ -43,18 +43,28 @@ ${PRINT_CSS}
 </style>
 </head>
 <body>
-${options.body}
+${stripMetaTags(options.body)}
 </body>
 </html>
 `;
+}
+
+/**
+ * Removes <meta> tags from the rendered Markdown: a `<meta http-equiv="refresh">` would navigate away
+ * from the page (and its CSP) while it is being printed. Code blocks are escaped, so they are untouched.
+ */
+export function stripMetaTags(html: string): string {
+  return html.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi, '');
 }
 
 const PRINT_CSS = `
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body {
   margin: 0; color: #1f2328; background: #fff; font-size: 10.5pt; line-height: 1.7; overflow-wrap: break-word;
+  /* BIZ UDPGothic before Yu Gothic / Meiryo: with those, Chrome on Windows records some kanji (日 見 文) as
+     Kangxi radicals (U+2F00 block) in the PDF text, which breaks searching and copying. */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
-    "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans CJK JP", "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
+    "BIZ UDPGothic", "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans CJK JP", "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
 }
 h1, h2, h3, h4, h5, h6 { margin: 1.4em 0 0.6em; line-height: 1.3; font-weight: 600; break-after: avoid; }
 h1 { font-size: 1.9em; padding-bottom: 0.25em; border-bottom: 1px solid #d1d9e0; }
@@ -84,8 +94,6 @@ th, td { padding: 0.35em 0.8em; border: 1px solid #d1d9e0; }
 th { font-weight: 600; background: #f6f8fa; }
 tr { break-inside: avoid; }
 thead { display: table-header-group; }
-input[type="checkbox"] { margin: 0 0.4em 0 0; vertical-align: middle; }
-.contains-task-list { padding-left: 0.6em; list-style: none; }
 .hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
 .hljs-keyword, .hljs-selector-tag, .hljs-type, .hljs-doctag { color: #cf222e; }
 .hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute { color: #0a3069; }
@@ -168,6 +176,8 @@ export function browserArgs(profileDir: string): string[] {
     '--disable-background-networking',
     '--disable-component-update',
     '--disable-sync',
+    // Edge on Windows otherwise relaunches itself at startup, and the process holding the pipe exits.
+    '--edge-skip-compat-layer-relaunch',
     'about:blank',
   ];
 }
@@ -191,15 +201,27 @@ export async function printToPdf(browser: string, profileDir: string, url: strin
   const cdp = new PipeConnection(child.stdio[3] as Writable, child.stdio[4] as Readable);
   let stderr = '';
   child.stderr?.on('data', (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-4000)));
+  const name = path.basename(browser);
   const exited = new Promise<never>((_, reject) => {
     child.once('error', (e) => reject(new Error(`could not start ${browser}: ${e.message}`)));
-    child.once('exit', (code) => reject(new Error(`the browser exited unexpectedly (code ${code}). ${lastLine(stderr)}`)));
+    child.once('exit', (code) => {
+      const detail = lastLine(stderr);
+      reject(
+        new Error(
+          `${name} closed before the PDF was printed (exit code ${code}).` +
+            (detail ? ` ${detail}` : '') +
+            ' Try another browser in "officeWorkbench.markdownPdf.browserPath".',
+        ),
+      );
+    });
   });
   exited.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   const stop = new Promise<never>((_, reject) => {
-    const timer = setTimeout(() => reject(new Error('the browser timed out while printing.')), options.timeoutMs ?? 120_000);
-    child.once('exit', () => clearTimeout(timer));
-    options.signal?.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+    timer = setTimeout(() => reject(new Error('the browser timed out while printing.')), options.timeoutMs ?? 120_000);
+    onAbort = () => reject(new Error('cancelled'));
+    options.signal?.addEventListener('abort', onAbort, { once: true });
   });
   stop.catch(() => undefined);
 
@@ -208,6 +230,8 @@ export async function printToPdf(browser: string, profileDir: string, url: strin
       const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
       const { sessionId } = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
       await cdp.send('Page.enable', {}, sessionId);
+      // Besides the page's CSP: also covers any page the document manages to navigate to.
+      await cdp.send('Emulation.setScriptExecutionDisabled', { value: true }, sessionId);
       const loaded = cdp.waitFor('Page.loadEventFired', sessionId);
       const nav = await cdp.send<{ errorText?: string }>('Page.navigate', { url }, sessionId);
       if (nav.errorText) throw new Error(`the browser could not open the page: ${nav.errorText}`);
@@ -220,7 +244,11 @@ export async function printToPdf(browser: string, profileDir: string, url: strin
       return new Uint8Array(Buffer.from(data, 'base64'));
     })()]);
   } finally {
-    await Promise.race([cdp.send('Browser.close').catch(() => undefined), new Promise((r) => setTimeout(r, 2000))]);
+    clearTimeout(timer);
+    if (onAbort) options.signal?.removeEventListener('abort', onAbort);
+    let grace: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([cdp.send('Browser.close').catch(() => undefined), new Promise((r) => (grace = setTimeout(r, 2000)))]);
+    clearTimeout(grace);
     if (child.exitCode === null) child.kill();
   }
 }

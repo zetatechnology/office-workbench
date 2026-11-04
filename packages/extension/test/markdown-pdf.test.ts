@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browserArgs, browserCandidates, buildPrintHtml, findBrowser } from '../src/markdown-pdf';
+import { browserArgs, browserCandidates, buildPrintHtml, findBrowser, stripMetaTags } from '../src/markdown-pdf';
 
 describe('buildPrintHtml', () => {
   const base = { title: 'Notes', body: '<h1>見出し</h1>', lang: 'ja', pageSize: 'A4' as const };
@@ -23,6 +23,19 @@ describe('buildPrintHtml', () => {
     const html = buildPrintHtml({ ...base, title: '<a & "b">', pageSize: 'B9' as never });
     expect(html).toContain('<title>&#60;a &#38; &#34;b&#34;&#62;</title>');
     expect(html).toContain('@page { size: A4;');
+  });
+});
+
+describe('stripMetaTags', () => {
+  it('removes meta tags from the body, including quoted ">" in attributes', () => {
+    const body = '<p>a</p><META http-equiv="refresh" content="0;url=file:///x>y">\n<meta charset=\'utf-8\'/><p>b</p>';
+    expect(stripMetaTags(body)).toBe('<p>a</p>\n<p>b</p>');
+  });
+
+  it('keeps escaped tags in code and is applied by buildPrintHtml', () => {
+    expect(stripMetaTags('<code>&lt;meta http-equiv="refresh"&gt;</code>')).toBe('<code>&lt;meta http-equiv="refresh"&gt;</code>');
+    const html = buildPrintHtml({ title: 't', body: '<meta http-equiv="refresh" content="0">', lang: 'en', pageSize: 'A4' });
+    expect(html).not.toContain('refresh');
   });
 });
 
@@ -53,5 +66,6 @@ describe('browserArgs', () => {
     expect(args).toContain('--headless=new');
     expect(args).toContain('--remote-debugging-pipe');
     expect(args).toContain('--user-data-dir=/tmp/x/profile');
+    expect(args).toContain('--edge-skip-compat-layer-relaunch');
   });
 });
