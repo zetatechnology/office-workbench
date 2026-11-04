@@ -217,7 +217,7 @@ Phase 2 と同じ方針（最小差分保存、正の状態は Extension Host、
 2. **Web 拡張（vscode.dev）対応を必須とするか**: 必須なら Node 依存を完全に排除する設計を初期から徹底する。
 3. **AI 連携（LM Tools）の優先度**: 早期に入れると差別化要素になる。
 4. **Office COM 連携の要否**: Windows ローカル限定だが、完全忠実な PDF 化や再計算が可能。
-5. **公開範囲**: Marketplace 公開か社内配布か（ライセンス・依存 OSS の選定に影響）。
+5. **公開範囲**: 決定済み。Visual Studio Marketplace（と Open VSX）で MIT ライセンスとして公開する。同梱する OSS（pdf.js・docx-preview は Apache-2.0、jszip は MIT/GPLv3 の選択で MIT、@xmldom/xmldom ほかは MIT）はいずれも両立する。
 
 ## 10. 開発運用
 - リポジトリは `office-workbench/main` を main ブランチの作業ツリーとし、機能ブランチは `git worktree add ../<branch> -b <branch>` で兄弟ディレクトリに作成する。
