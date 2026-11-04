@@ -2,7 +2,7 @@
   "name": "office-workbench",
   "displayName": "Office Workbench",
   "description": "View Word, Excel, PowerPoint and PDF files inside VS Code, and edit Word, Excel, PowerPoint and CSV files.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "zetatechnology",
   "license": "MIT",
   "preview": true,
