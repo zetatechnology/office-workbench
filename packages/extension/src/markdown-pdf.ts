@@ -241,7 +241,9 @@ export async function printToPdf(browser: string, profileDir: string, url: strin
         pageRequested ||= allow;
         const reply = allow
           ? cdp.send('Fetch.continueRequest', { requestId }, sessionId)
-          : cdp.send('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }, sessionId);
+          : // 'Aborted', not 'BlockedByClient': a blocked navigation shows an error page in place of the
+            // document, so printing fails; an aborted one leaves the document as it is.
+            cdp.send('Fetch.failRequest', { requestId, errorReason: 'Aborted' }, sessionId);
         reply.catch(() => undefined);
       });
       await cdp.send('Fetch.enable', { patterns: [{ resourceType: 'Document', requestStage: 'Request' }] }, sessionId);
